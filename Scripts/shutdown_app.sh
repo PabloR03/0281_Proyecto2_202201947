@@ -48,8 +48,8 @@ case $choice in
         
         docker rmi pablo03r/202201947-sopes1-fase2-backend:v1.0 2>/dev/null || true
         docker rmi pablo03r/202201947-sopes1-fase2-api:v1.0 2>/dev/null || true
-        docker rmi pablo03r/202201947-sopes1-fase1-frontend:v1.4 2>/dev/null || true
-        
+        docker rmi pablo03r/202201947-sopes1-fase2-frontend:v1.0 2>/dev/null || true
+
         docker image prune -f &> /dev/null
         docker container prune -f &> /dev/null
         docker network prune -f &> /dev/null

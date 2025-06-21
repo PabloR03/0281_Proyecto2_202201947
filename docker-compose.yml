@@ -67,7 +67,7 @@ services:
 
   # Frontend React
   frontend-react:
-    image: pablo03r/202201947-sopes1-fase1-frontend:v1.4
+    image: pablo03r/202201947-sopes1-fase2-frontend:v1.0
     container_name: react-frontend
     ports:
       - "3000:80"
