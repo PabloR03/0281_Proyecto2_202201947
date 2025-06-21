@@ -14,6 +14,8 @@ const config = {
     endpoints: {
         cpu: '/cpu',
         ram: '/ram',
+        metrics: '/metrics',
+        procesos: '/procesos',
         health: '/health'
     },
     

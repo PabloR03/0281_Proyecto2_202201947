@@ -87,17 +87,91 @@ async function insertRAMData(data) {
     }
 }
 
-// Función para obtener estadísticas de la base de datos (opcional)
+// Función para insertar métricas combinadas
+async function insertMetricsData(data) {
+    const client = await pool.connect();
+    try {
+        const query = `
+            INSERT INTO metrics_combined (
+                timestamp, total_ram, ram_libre, uso_ram, porcentaje_ram,
+                porcentaje_cpu_uso, porcentaje_cpu_libre, procesos_corriendo,
+                total_procesos, procesos_durmiendo, procesos_zombie, procesos_parados
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            RETURNING id;
+        `;
+        const values = [
+            new Date(data.timestamp),
+            data.total_ram,
+            data.ram_libre,
+            data.uso_ram,
+            data.porcentaje_ram,
+            data.porcentaje_cpu_uso,
+            data.porcentaje_cpu_libre,
+            data.procesos_corriendo,
+            data.total_procesos,
+            data.procesos_durmiendo,
+            data.procesos_zombie,
+            data.procesos_parados
+        ];
+        
+        const result = await client.query(query, values);
+        console.log(`Metrics data guardada en BD con ID: ${result.rows[0].id}`);
+        return result.rows[0].id;
+    } catch (error) {
+        console.error('Error insertando datos de metrics:', error.message);
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+// Función para insertar datos de procesos
+async function insertProcesosData(data) {
+    const client = await pool.connect();
+    try {
+        const query = `
+            INSERT INTO procesos_metrics (
+                timestamp, procesos_corriendo, total_procesos,
+                procesos_durmiendo, procesos_zombie, procesos_parados
+            ) VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id;
+        `;
+        const values = [
+            new Date(data.timestamp),
+            data.procesos_corriendo,
+            data.total_procesos,
+            data.procesos_durmiendo,
+            data.procesos_zombie,
+            data.procesos_parados
+        ];
+        
+        const result = await client.query(query, values);
+        console.log(`Procesos data guardada en BD con ID: ${result.rows[0].id}`);
+        return result.rows[0].id;
+    } catch (error) {
+        console.error('Error insertando datos de procesos:', error.message);
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+// Función para obtener estadísticas de la base de datos
 async function getDatabaseStats() {
     const client = await pool.connect();
     try {
         const cpuCount = await client.query('SELECT COUNT(*) FROM cpu_metrics');
         const ramCount = await client.query('SELECT COUNT(*) FROM ram_metrics');
+        const metricsCount = await client.query('SELECT COUNT(*) FROM metrics_combined');
+        const procesosCount = await client.query('SELECT COUNT(*) FROM procesos_metrics');
         
         return {
             cpuRecords: parseInt(cpuCount.rows[0].count),
             ramRecords: parseInt(ramCount.rows[0].count),
-            totalRecords: parseInt(cpuCount.rows[0].count) + parseInt(ramCount.rows[0].count)
+            metricsRecords: parseInt(metricsCount.rows[0].count),
+            procesosRecords: parseInt(procesosCount.rows[0].count),
+            totalRecords: parseInt(cpuCount.rows[0].count) + parseInt(ramCount.rows[0].count) + 
+                            parseInt(metricsCount.rows[0].count) + parseInt(procesosCount.rows[0].count)
         };
     } catch (error) {
         console.error('Error obteniendo estadísticas de BD:', error.message);
@@ -122,6 +196,8 @@ module.exports = {
     testConnection,
     insertCPUData,
     insertRAMData,
+    insertMetricsData,
+    insertProcesosData,
     getDatabaseStats,
     closePool
 };

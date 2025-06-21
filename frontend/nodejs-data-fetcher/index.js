@@ -13,6 +13,8 @@ app.use(express.json());
 let metricsData = {
     cpu: [],
     ram: [],
+    metrics: [],
+    procesos: [],
     lastUpdate: null
 };
 
@@ -48,7 +50,7 @@ async function updateCPUData() {
         const processedData = {
             timestamp: result.timestamp,
             porcentajeUso: cpuData.porcentajeUso || 0,
-            raw: cpuData
+            //raw: cpuData
         };
         
         // Guardar en memoria (funcionalidad original)
@@ -87,7 +89,7 @@ async function updateRAMData() {
             libre: ramData.libre || 0,
             uso: ramData.uso || 0,
             porcentajeUso: ramData.porcentajeUso || 0,
-            raw: ramData
+            //raw: ramData
         };
         
         // Guardar en memoria (funcionalidad original)
@@ -112,25 +114,118 @@ async function updateRAMData() {
     }
 }
 
+// Nueva función para procesar y almacenar métricas combinadas
+async function updateMetricsData() {
+    const result = await fetchBackendData(config.endpoints.metrics);
+    
+    if (result.success) {
+        try {
+        const data = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+        
+        const processedData = {
+            timestamp: result.timestamp,
+            total_ram: data.total_ram || 0,
+            ram_libre: data.ram_libre || 0,
+            uso_ram: data.uso_ram || 0,
+            porcentaje_ram: data.porcentaje_ram || 0,
+            porcentaje_cpu_uso: data.porcentaje_cpu_uso || 0,
+            porcentaje_cpu_libre: data.porcentaje_cpu_libre || 0,
+            procesos_corriendo: data.procesos_corriendo || 0,
+            total_procesos: data.total_procesos || 0,
+            procesos_durmiendo: data.procesos_durmiendo || 0,
+            procesos_zombie: data.procesos_zombie || 0,
+            procesos_parados: data.procesos_parados || 0,
+            hora: data.hora || '',
+            //raw: data
+        };
+        
+        // Guardar en memoria
+        metricsData.metrics.push(processedData);
+        
+        // Mantener solo los últimos 100 registros en memoria
+        if (metricsData.metrics.length > 100) {
+            metricsData.metrics.shift();
+        }
+        
+        // Guardar en base de datos
+        try {
+            await db.insertMetricsData(processedData);
+        } catch (dbError) {
+            console.error('Error guardando Metrics en BD (continuando normalmente):', dbError.message);
+        }
+        
+        console.log(`Metrics actualizadas: CPU ${processedData.porcentaje_cpu_uso}%, RAM ${processedData.porcentaje_ram}%, Procesos ${processedData.total_procesos}`);
+        } catch (parseError) {
+        console.error('Error parsing Metrics data:', parseError);
+        }
+    }
+}
+
+// Nueva función para procesar y almacenar datos de procesos
+async function updateProcesosData() {
+    const result = await fetchBackendData(config.endpoints.procesos);
+    
+    if (result.success) {
+        try {
+        const data = typeof result.data === 'string' ? JSON.parse(result.data) : result.data;
+        
+        const processedData = {
+            timestamp: result.timestamp,
+            procesos_corriendo: data.procesos_corriendo || 0,
+            total_procesos: data.total_procesos || 0,
+            procesos_durmiendo: data.procesos_durmiendo || 0,
+            procesos_zombie: data.procesos_zombie || 0,
+            procesos_parados: data.procesos_parados || 0,
+            //raw: data
+        };
+        
+        // Guardar en memoria
+        metricsData.procesos.push(processedData);
+        
+        // Mantener solo los últimos 100 registros en memoria
+        if (metricsData.procesos.length > 100) {
+            metricsData.procesos.shift();
+        }
+        
+        // Guardar en base de datos
+        try {
+            await db.insertProcesosData(processedData);
+        } catch (dbError) {
+            console.error('Error guardando Procesos en BD (continuando normalmente):', dbError.message);
+        }
+        
+        console.log(`Procesos actualizados: Total ${processedData.total_procesos}, Corriendo ${processedData.procesos_corriendo}, Durmiendo ${processedData.procesos_durmiendo}`);
+        } catch (parseError) {
+        console.error('Error parsing Procesos data:', parseError);
+        }
+    }
+}
+
 // Función principal de actualización
 async function updateMetrics() {
     console.log('Actualizando métricas...');
     await Promise.all([
         updateCPUData(),
-        updateRAMData()
+        updateRAMData(),
+        updateMetricsData(),
+        updateProcesosData()
     ]);
     metricsData.lastUpdate = new Date().toISOString();
 }
 
-// Endpoints API
+// Endpoints API originales
 app.get('/api/metrics', (req, res) => {
     res.json({
         cpu: metricsData.cpu,
         ram: metricsData.ram,
+        metrics: metricsData.metrics,
+        procesos: metricsData.procesos,
         lastUpdate: metricsData.lastUpdate,
         totalRecords: {
         cpu: metricsData.cpu.length,
-        ram: metricsData.ram.length
+        ram: metricsData.ram.length,
+        metrics: metricsData.metrics.length,
+        procesos: metricsData.procesos.length
         }
     });
 });
@@ -151,10 +246,29 @@ app.get('/api/metrics/ram', (req, res) => {
     });
 });
 
+// Nuevos endpoints
+app.get('/api/metrics/combined', (req, res) => {
+    res.json({
+        data: metricsData.metrics,
+        lastUpdate: metricsData.lastUpdate,
+        count: metricsData.metrics.length
+    });
+});
+
+app.get('/api/metrics/procesos', (req, res) => {
+    res.json({
+        data: metricsData.procesos,
+        lastUpdate: metricsData.lastUpdate,
+        count: metricsData.procesos.length
+    });
+});
+
 app.get('/api/metrics/latest', (req, res) => {
     const latest = {
         cpu: metricsData.cpu.length > 0 ? metricsData.cpu[metricsData.cpu.length - 1] : null,
         ram: metricsData.ram.length > 0 ? metricsData.ram[metricsData.ram.length - 1] : null,
+        metrics: metricsData.metrics.length > 0 ? metricsData.metrics[metricsData.metrics.length - 1] : null,
+        procesos: metricsData.procesos.length > 0 ? metricsData.procesos[metricsData.procesos.length - 1] : null,
         lastUpdate: metricsData.lastUpdate
     };
     res.json(latest);
@@ -214,8 +328,11 @@ async function startService() {
     // Iniciar servidor
     app.listen(config.port, () => {
         console.log(`Servicio NodeJS ejecutándose en puerto ${config.port}`);
-        console.log(`Datos disponibles en http://localhost:${config.port}/api/metrics`);
-        console.log(`Estadísticas BD en http://localhost:${config.port}/api/database/stats`);
+        console.log(`Datos disponibles en:`);
+        console.log(`  - http://localhost:${config.port}/api/metrics`);
+        console.log(`  - http://localhost:${config.port}/api/metrics/combined`);
+        console.log(`  - http://localhost:${config.port}/api/metrics/procesos`);
+        console.log(`  - http://localhost:${config.port}/api/database/stats`);
         console.log(`Actualizando métricas cada ${config.updateInterval}ms`);
     });
 }
