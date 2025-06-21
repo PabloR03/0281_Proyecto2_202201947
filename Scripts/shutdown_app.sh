@@ -46,7 +46,7 @@ case $choice in
             docker compose down -v
         fi
         
-        docker rmi pablo03r/202201947-sopes1-fase1-backend:latest 2>/dev/null || true
+        docker rmi pablo03r/202201947-sopes1-fase2-backend:v1.0 2>/dev/null || true
         docker rmi pablo03r/202201947-sopes1-fase1-api:v1.1 2>/dev/null || true
         docker rmi pablo03r/202201947-sopes1-fase1-frontend:v1.4 2>/dev/null || true
         

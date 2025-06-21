@@ -13,11 +13,11 @@ else
 fi
 
 # Limpiar imágenes del proyecto anterior
-docker rmi proyecto1_fase1-backend proyecto1_fase1-nodejs-api proyecto1_fase1-frontend 2>/dev/null || true
+docker rmi proyecto_fase2-backend proyecto1_fase1-nodejs-api proyecto1_fase1-frontend 2>/dev/null || true
 docker image prune -f &> /dev/null
 
 # Descargar imágenes
-docker pull pablo03r/202201947-sopes1-fase1-backend:latest
+docker pull pablo03r/202201947-sopes1-fase2-backend:v1.0
 docker pull pablo03r/202201947-sopes1-fase1-api:v1.1
 docker pull pablo03r/202201947-sopes1-fase1-frontend:v1.4
 docker pull postgres:15-alpine

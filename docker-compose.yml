@@ -26,7 +26,7 @@ services:
 
   # Backend Go
   backend:
-    image: pablo03r/202201947-sopes1-fase1-backend:latest
+    image: pablo03r/202201947-sopes1-fase2-backend:v1.0
     container_name: monitor-agent-backend
     ports:
       - "8080:8080"
@@ -73,7 +73,7 @@ services:
       - "3000:80"
     environment:
       NODE_ENV: production
-      REACT_APP_API_URL: http://localhost:3001
+      REACT_APP_API_URL: http://nodejs-api:3001
     restart: unless-stopped
     depends_on:
       - nodejs-api

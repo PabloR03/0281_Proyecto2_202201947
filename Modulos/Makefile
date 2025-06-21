@@ -1,5 +1,6 @@
 obj-m += cpu_202201947.o
 obj-m += ram_202201947.o
+obj-m += procesos_202201947.o
 
 
 all:
