@@ -1,89 +1,121 @@
 version: '3.8'
 
 services:
-  # Base de datos PostgreSQL
-  postgres:
-    image: postgres:15-alpine
-    container_name: metrics-postgres
+  mysql:
+    image: mysql:8.0
+    container_name: metrics_mysql
+    restart: always
     environment:
-      POSTGRES_DB: metrics_db
-      POSTGRES_USER: metrics_202201947
-      POSTGRES_PASSWORD: metrics_202201947
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: metrics_db
+      MYSQL_USER: metrics_user
+      MYSQL_PASSWORD: metrics_password
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./frontend/nodejs-data-fetcher/init.sql:/docker-entrypoint-initdb.d/init.sql
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U metrics_202201947 -d metrics_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    command: --default-authentication-plugin=mysql_native_password
 
-  # Backend Go
-  backend:
-    image: pablo03r/202201947-sopes1-fase2-backend:v1.0
-    container_name: monitor-agent-backend
+  adminer:
+    image: adminer
+    container_name: metrics_adminer
+    restart: always
     ports:
-      - "8080:8080"
-    restart: unless-stopped
+      - "8081:8081"
     depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
-  # API Node.js Data Fetcher
-  nodejs-api:
-    image: pablo03r/202201947-sopes1-fase2-api:v1.0
-    container_name: nodejs-data-fetcher
-    ports:
-      - "3001:3001"
-    environment:
-      NODE_ENV: production
-      NODEJS_PORT: 3001
-      BACKEND_URL: http://backend:8080
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: metrics_db
-      DB_USER: metrics_202201947
-      DB_PASSWORD: metrics_202201947
-    restart: unless-stopped
-    depends_on:
-      - backend
-      - postgres
-    networks:
-      - app-network
-
-  # Frontend React
-  frontend-react:
-    image: pablo03r/202201947-sopes1-fase2-frontend:v1.0
-    container_name: react-frontend
-    ports:
-      - "3000:80"
-    environment:
-      NODE_ENV: production
-      REACT_APP_API_URL: http://nodejs-api:3001
-    restart: unless-stopped
-    depends_on:
-      - nodejs-api
-    networks:
-      - app-network
+      - mysql
 
 volumes:
-  postgres_data:
-    driver: local
+  mysql_data:
 
-networks:
-  app-network:
-    driver: bridge
+
+# version: '3.8'
+
+# services:
+#   # Base de datos PostgreSQL
+#   postgres:
+#     image: postgres:15-alpine
+#     container_name: metrics-postgres
+#     environment:
+#       POSTGRES_DB: metrics_db
+#       POSTGRES_USER: metrics_202201947
+#       POSTGRES_PASSWORD: metrics_202201947
+#       POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+#     ports:
+#       - "5432:5432"
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#       - ./frontend/nodejs-data-fetcher/init.sql:/docker-entrypoint-initdb.d/init.sql
+#     restart: unless-stopped
+#     healthcheck:
+#       test: ["CMD-SHELL", "pg_isready -U metrics_202201947 -d metrics_db"]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#     networks:
+#       - app-network
+
+#   # Backend Go
+#   backend:
+#     image: pablo03r/202201947-sopes1-fase2-backend:v1.0
+#     container_name: monitor-agent-backend
+#     ports:
+#       - "8080:8080"
+#     restart: unless-stopped
+#     depends_on:
+#       postgres:
+#         condition: service_healthy
+#     networks:
+#       - app-network
+#     healthcheck:
+#       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 40s
+
+#   # API Node.js Data Fetcher
+#   nodejs-api:
+#     image: pablo03r/202201947-sopes1-fase2-api:v1.0
+#     container_name: nodejs-data-fetcher
+#     ports:
+#       - "3001:3001"
+#     environment:
+#       NODE_ENV: production
+#       NODEJS_PORT: 3001
+#       BACKEND_URL: http://backend:8080
+#       DB_HOST: postgres
+#       DB_PORT: 5432
+#       DB_NAME: metrics_db
+#       DB_USER: metrics_202201947
+#       DB_PASSWORD: metrics_202201947
+#     restart: unless-stopped
+#     depends_on:
+#       - backend
+#       - postgres
+#     networks:
+#       - app-network
+
+#   # Frontend React
+#   frontend-react:
+#     image: pablo03r/202201947-sopes1-fase2-frontend:v1.0
+#     container_name: react-frontend
+#     ports:
+#       - "3000:80"
+#     environment:
+#       NODE_ENV: production
+#       REACT_APP_API_URL: http://nodejs-api:3001
+#     restart: unless-stopped
+#     depends_on:
+#       - nodejs-api
+#     networks:
+#       - app-network
+
+# volumes:
+#   postgres_data:
+#     driver: local
+
+# networks:
+#   app-network:
+#     driver: bridge

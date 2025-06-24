@@ -1,1 +1,1 @@
-savedcmd_procesos_202201947.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T /usr/src/linux-headers-6.14.0-15-generic/scripts/module.lds -o procesos_202201947.ko procesos_202201947.o procesos_202201947.mod.o .module-common.o
+savedcmd_procesos_202201947.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T /usr/src/linux-headers-6.14.0-22-generic/scripts/module.lds -o procesos_202201947.ko procesos_202201947.o procesos_202201947.mod.o .module-common.o
