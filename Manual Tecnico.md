@@ -317,4 +317,10 @@ Muestra mensajes de estado durante todo el proceso.
 Fase 1
 locust -f phase1_generator.py --host=http://localhost:8080 -u 300 -r 1 -t 180s --headless
 Fase 2
-locust -f phase2_sender.py --host=http://TU-INGRESS-URL -u 150 -r 1 --headless
+locust -f phase2_sender.py --host=http://192.168.49.2 -u 150 -r 1 --headless
+
+# Enviar datos generados al ingress
+locust -f phase2_sender.py --host=http://metrics-api.local \
+       -u 150 -r 1 --headless
+
+# Detener manualmente con Ctrl+C después de observar el tráfico

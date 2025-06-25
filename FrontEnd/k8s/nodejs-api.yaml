@@ -1,0 +1,103 @@
+# ConfigMap para variables de entorno de Node.js
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nodejs-api-config
+  namespace: so1-fase2
+data:
+  NODE_ENV: "production"
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "monitoring"
+  DB_USER: "admin"
+  DB_PASSWORD: "admin123"
+  PORT: "7000"
+
+---
+# Deployment de la API Node.js
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodejs-api-deployment
+  namespace: so1-fase2
+  labels:
+    app: nodejs-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nodejs-api
+  template:
+    metadata:
+      labels:
+        app: nodejs-api
+    spec:
+      containers:
+      - name: nodejs-api
+        image: nodejs-monitoring-api:latest
+        imagePullPolicy: Never  # Para usar imagen local
+        ports:
+        - containerPort: 7000
+        envFrom:
+        - configMapRef:
+            name: nodejs-api-config
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 7000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 7000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+---
+# Service de la API Node.js
+apiVersion: v1
+kind: Service
+metadata:
+  name: nodejs-api-service
+  namespace: so1-fase2
+  labels:
+    app: nodejs-api
+spec:
+  type: NodePort
+  ports:
+  - port: 7000
+    targetPort: 7000
+    nodePort: 30700
+    protocol: TCP
+  selector:
+    app: nodejs-api
+
+---
+# Ingress para la API Node.js (opcional)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nodejs-api-ingress
+  namespace: so1-fase2
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: nodejs-api.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nodejs-api-service
+            port:
+              number: 7000

@@ -1,0 +1,102 @@
+# ConfigMap para variables de entorno de Python
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: python-api-config
+  namespace: so1-fase2
+data:
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "monitoring"
+  DB_USER: "admin"
+  DB_PASSWORD: "admin123"
+  PORT: "8000"
+
+---
+# Deployment de la API Python
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: python-api-deployment
+  namespace: so1-fase2
+  labels:
+    app: python-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: python-api
+  template:
+    metadata:
+      labels:
+        app: python-api
+    spec:
+      containers:
+      - name: python-api
+        image: python-monitoring-api:latest
+        imagePullPolicy: Never  # Para usar imagen local
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: python-api-config
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+---
+# Service de la API Python
+apiVersion: v1
+kind: Service
+metadata:
+  name: python-api-service
+  namespace: so1-fase2
+  labels:
+    app: python-api
+spec:
+  type: NodePort
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30800
+    protocol: TCP
+  selector:
+    app: python-api
+
+---
+# Ingress para la API Python (opcional)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: python-api-ingress
+  namespace: so1-fase2
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: python-api.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000

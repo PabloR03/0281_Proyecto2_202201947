@@ -1,0 +1,198 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: so1-fase2
+  labels:
+    name: so1-fase2
+    project: monitoring-apis
+
+---
+# Ingress Principal para Python API (50% del tráfico)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: python-api-ingress
+  namespace: so1-fase2
+  annotations:
+    # Usar NGINX Ingress Controller
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    
+    # CORS si es necesario
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    
+    # Header para identificar el backend
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Backend-Used "python-api" always;
+      add_header X-Traffic-Split "50-50" always;
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: monitoring-api.local  # Para acceso local desde dentro del cluster
+    http:
+      paths:
+      - path: /monitoring-data
+        pathType: Prefix
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000
+  # Regla sin host específico para acceso interno
+  - http:
+      paths:
+      - path: /monitoring-data
+        pathType: Prefix
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000
+
+---
+# Ingress Canary para NodeJS API (50% del tráfico)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nodejs-api-ingress-canary
+  namespace: so1-fase2
+  annotations:
+    # Usar NGINX Ingress Controller
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    
+    # CORS si es necesario
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
+    
+    # Configuración canary para 50% del tráfico
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "50"
+    
+    # Header para identificar el backend
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Backend-Used "nodejs-api" always;
+      add_header X-Traffic-Split "50-50" always;
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: monitoring-api.local  # Para acceso local desde dentro del cluster
+    http:
+      paths:
+      - path: /monitoring-data
+        pathType: Prefix
+        backend:
+          service:
+            name: nodejs-api-service
+            port:
+              number: 7000
+  # Regla sin host específico para acceso interno
+  - http:
+      paths:
+      - path: /monitoring-data
+        pathType: Prefix
+        backend:
+          service:
+            name: nodejs-api-service
+            port:
+              number: 7000
+
+---
+# Ingress adicional para endpoints de monitoreo y salud
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: monitoring-health-ingress
+  namespace: so1-fase2
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Service-Type "health-check" always;
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: monitoring-api.local
+    http:
+      paths:
+      # Health check que va al Python API por defecto
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000
+      # Status endpoint personalizado
+      - path: /status
+        pathType: Exact
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000
+  # Reglas sin host específico
+  - http:
+      paths:
+      - path: /health
+        pathType: Exact
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000
+      - path: /status
+        pathType: Exact
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000
+
+---
+# Service NodePort para acceso externo directo (opcional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-external-access-python
+  namespace: so1-fase2
+  labels:
+    app: monitoring-external-python
+spec:
+  type: NodePort
+  ports:
+  - port: 8000
+    targetPort: 8000
+    nodePort: 30800
+    protocol: TCP
+    name: http-python
+  selector:
+    app: python-api
+
+---
+# Service NodePort para acceso externo NodeJS (opcional)
+apiVersion: v1
+kind: Service
+metadata:
+  name: monitoring-external-access-nodejs
+  namespace: so1-fase2
+  labels:
+    app: monitoring-external-nodejs
+spec:
+  type: NodePort
+  ports:
+  - port: 7000
+    targetPort: 7000
+    nodePort: 30700
+    protocol: TCP
+    name: http-nodejs
+  selector:
+    app: nodejs-api

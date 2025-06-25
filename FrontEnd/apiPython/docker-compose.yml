@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: monitoring_db_python
+    environment:
+      POSTGRES_DB: monitoring
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5434:5432"  # Puerto diferente para evitar conflictos
+    volumes:
+      - postgres_data_python:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+
+  api-python:
+    build: .
+    container_name: monitoring_api_python
+    environment:
+      - DB_USER=admin
+      - DB_PASSWORD=admin123
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=monitoring
+      - PORT=8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - monitoring-network
+
+volumes:
+  postgres_data_python:
+
+networks:
+  monitoring-network:
+    driver: bridge

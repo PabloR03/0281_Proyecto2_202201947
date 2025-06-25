@@ -1,0 +1,161 @@
+# ConfigMap para init.sql
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-sql
+  namespace: so1-fase2
+data:
+  init.sql: |
+    -- Crear tabla de datos de monitoreo
+    CREATE TABLE IF NOT EXISTS monitoring_data (
+        id SERIAL PRIMARY KEY,
+        total_ram BIGINT,
+        ram_libre BIGINT,
+        uso_ram BIGINT,
+        porcentaje_ram NUMERIC(5,2),
+        porcentaje_cpu_uso NUMERIC(5,2),
+        porcentaje_cpu_libre NUMERIC(5,2),
+        procesos_corriendo INTEGER,
+        total_procesos INTEGER,
+        procesos_durmiendo INTEGER,
+        procesos_zombie INTEGER,
+        procesos_parados INTEGER,
+        hora TIMESTAMP,
+        timestamp_received TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        api VARCHAR(50) DEFAULT 'Unknown'
+    );
+
+    -- Crear tabla de metadatos
+    CREATE TABLE IF NOT EXISTS metadata (
+        id SERIAL PRIMARY KEY,
+        key VARCHAR(255) UNIQUE NOT NULL,
+        value TEXT,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Insertar metadatos básicos
+    INSERT INTO metadata (key, value, description) VALUES 
+    ('database_version', '1.0', 'Versión de la base de datos'),
+    ('created_date', CURRENT_TIMESTAMP::TEXT, 'Fecha de creación de la base de datos'),
+    ('last_updated', CURRENT_TIMESTAMP::TEXT, 'Última actualización de metadatos')
+    ON CONFLICT (key) DO UPDATE SET 
+        value = EXCLUDED.value,
+        updated_at = CURRENT_TIMESTAMP;
+
+    -- Crear índices para mejor rendimiento
+    CREATE INDEX IF NOT EXISTS idx_monitoring_data_timestamp ON monitoring_data(timestamp_received);
+    CREATE INDEX IF NOT EXISTS idx_monitoring_data_hora ON monitoring_data(hora);
+    CREATE INDEX IF NOT EXISTS idx_monitoring_data_api ON monitoring_data(api);
+
+---
+# PersistentVolume para PostgreSQL
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /data/postgres
+
+---
+# PersistentVolumeClaim para PostgreSQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: so1-fase2
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: manual
+
+---
+# Deployment de PostgreSQL
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+  namespace: so1-fase2
+  labels:
+    app: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: "monitoring"
+        - name: POSTGRES_USER
+          value: "admin"
+        - name: POSTGRES_PASSWORD
+          value: "admin123"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        - name: postgres-init
+          mountPath: /docker-entrypoint-initdb.d
+        readinessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - pg_isready -U admin -d monitoring
+          initialDelaySeconds: 15
+          timeoutSeconds: 2
+        livenessProbe:
+          exec:
+            command:
+              - /bin/sh
+              - -c
+              - pg_isready -U admin -d monitoring
+          initialDelaySeconds: 15
+          timeoutSeconds: 2
+      volumes:
+      - name: postgres-storage
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+      - name: postgres-init
+        configMap:
+          name: postgres-init-sql
+
+---
+# Service de PostgreSQL
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: so1-fase2
+  labels:
+    app: postgres
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+  selector:
+    app: postgres
