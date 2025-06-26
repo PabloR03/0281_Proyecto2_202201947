@@ -1,8 +1,8 @@
-# Ingress Principal para Python API
+# Ingress principal para Python (50% del tráfico)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: python-api-ingress
+  name: python-api-primary
   namespace: so1-fase2
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
@@ -10,16 +10,20 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
-    # Habilitamos session affinity basada en IP para mejor distribución
-    nginx.ingress.kubernetes.io/affinity: "cookie"
-    nginx.ingress.kubernetes.io/affinity-mode: "balanced"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+    # Mejor distribución con hash consistente
+    nginx.ingress.kubernetes.io/upstream-hash-by: "consistent $remote_addr$request_uri"
 spec:
   ingressClassName: nginx
   rules:
   - http:
       paths:
-      # Acceso directo a Python API
+      - path: /api(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: python-api-service
+            port:
+              number: 8000
       - path: /python(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
@@ -29,11 +33,11 @@ spec:
               number: 8000
 
 ---
-# Ingress Canary para Node.js API con mejor distribución
+# Ingress canary para Node.js (50% del tráfico)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: nodejs-api-ingress-canary
+  name: nodejs-api-canary
   namespace: so1-fase2
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
@@ -41,20 +45,16 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
     nginx.ingress.kubernetes.io/rewrite-target: /$2
-    # Configuración Canary mejorada
+    # Configuración canary sin snippets
     nginx.ingress.kubernetes.io/canary: "true"
     nginx.ingress.kubernetes.io/canary-weight: "50"
-    # Usar hash consistente para mejor distribución
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri$remote_addr"
-    # Alternativa: usar canary-by-header para control más preciso
-    # nginx.ingress.kubernetes.io/canary-by-header: "X-Canary"
-    # nginx.ingress.kubernetes.io/canary-by-header-value: "true"
+    # Hash consistente para mejor distribución
+    nginx.ingress.kubernetes.io/upstream-hash-by: "consistent $remote_addr$request_uri"
 spec:
   ingressClassName: nginx
   rules:
   - http:
       paths:
-      # Esta ruta capturará el 50% del tráfico de /api
       - path: /api(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
@@ -64,11 +64,11 @@ spec:
               number: 7000
 
 ---
-# Ingress separado para acceso directo a Node.js
+# Ingress directo para Node.js
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: nodejs-api-direct-ingress
+  name: nodejs-api-direct
   namespace: so1-fase2
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
@@ -81,7 +81,6 @@ spec:
   rules:
   - http:
       paths:
-      # Acceso directo a Node.js API
       - path: /nodejs(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
@@ -91,40 +90,23 @@ spec:
               number: 7000
 
 ---
-# Configuración alternativa: Un solo Ingress con ConfigMap personalizado
-# Esta es una opción más avanzada que requiere configuración adicional
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nginx-load-balancer-conf
-  namespace: so1-fase2
-data:
-  load-balance.conf: |
-    upstream python-backend {
-        server python-api-service.so1-fase2.svc.cluster.local:8000 weight=1;
-    }
-    upstream nodejs-backend {
-        server nodejs-api-service.so1-fase2.svc.cluster.local:7000 weight=1;
-    }
-    upstream balanced-backend {
-        server python-api-service.so1-fase2.svc.cluster.local:8000 weight=1;
-        server nodejs-api-service.so1-fase2.svc.cluster.local:7000 weight=1;
-        least_conn;
-    }
+# ===================================================================
+# MÉTRICAS - Configuración separada para balanceo 50/50
+# ===================================================================
 
----
-# Métricas con distribución equitativa
+# Métricas - Ingress principal para Python
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: metricas-python-ingress
+  name: metricas-python-primary
   namespace: so1-fase2
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "1m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr$request_uri"
+    # Distribución más equitativa
+    nginx.ingress.kubernetes.io/upstream-hash-by: "consistent $remote_addr$request_uri"
 spec:
   ingressClassName: nginx
   rules:
@@ -139,21 +121,21 @@ spec:
               number: 8000
 
 ---
-# Métricas Canary para Node.js con hash mejorado
+# Métricas - Ingress canary para Node.js
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: metricas-nodejs-ingress-canary
+  name: metricas-nodejs-canary
   namespace: so1-fase2
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "1m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    # Configuración canary mejorada para métricas
+    # Configuración canary
     nginx.ingress.kubernetes.io/canary: "true"
     nginx.ingress.kubernetes.io/canary-weight: "50"
-    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr$request_uri"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "consistent $remote_addr$request_uri"
 spec:
   ingressClassName: nginx
   rules:
@@ -166,3 +148,5 @@ spec:
             name: nodejs-api-service
             port:
               number: 7000
+
+---

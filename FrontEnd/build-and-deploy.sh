@@ -13,6 +13,7 @@ NC='\033[0m'
 NAMESPACE="so1-fase2"
 TIMEOUT=300
 MINIKUBE_IP=$(minikube ip 2>/dev/null)
+DOCKER_USER="pablo03r"  # Tu usuario de Docker Hub
 
 # Funciones de utilidad
 error_exit() { echo -e "${RED}❌ Error: $1${NC}" >&2; exit 1; }
@@ -34,37 +35,19 @@ verify_dependencies() {
     fi
 }
 
-# Construcción de imágenes Docker
-build_docker_images() {
+# Verificar disponibilidad de imágenes en Docker Hub
+verify_docker_images() {
     local images=(
-        "apiNodeJS:nodejs-monitoring-api:latest:dockerfile"
-        "apiPython:python-monitoring-api:latest:Dockerfile"
+        "${DOCKER_USER}/api1-nodejs-fase2:latest"
+        "${DOCKER_USER}/api1-python-fase2:latest"
     )
     
+    info_msg "Verificando disponibilidad de imágenes en Docker Hub..."
     for image in "${images[@]}"; do
-        IFS=':' read -r dir name tag dockerfile <<< "$image"
-        cd "$dir" || error_exit "No se pudo acceder al directorio $dir"
-        
-        if [ ! -f "$dockerfile" ]; then
-            error_exit "No se encontró $dockerfile en $dir"
-        fi
-        
-        info_msg "Construyendo imagen $name..."
-        docker build -t "$name:$tag" . || error_exit "Error construyendo imagen $name"
-        success_msg "Imagen $name construida exitosamente"
-        
-        important_msg "Cargando imagen $name en Minikube..."
-        minikube image load "$name:$tag" || error_exit "Error cargando imagen $name en Minikube"
-        success_msg "Imagen $name cargada en Minikube"
-        
-        cd ..
+        info_msg "Descargando imagen $image..."
+        docker pull "$image" || error_exit "No se pudo descargar la imagen $image desde Docker Hub"
+        success_msg "Imagen $image descargada exitosamente"
     done
-    
-    # Verificar imágenes en Minikube
-    info_msg "Verificando imágenes en Minikube..."
-    minikube image ls | grep -E "(nodejs-monitoring-api|python-monitoring-api)" || 
-        error_exit "Las imágenes no se encontraron en Minikube"
-    success_msg "Imágenes verificadas en Minikube"
 }
 
 # Despliegue en Kubernetes
@@ -140,14 +123,15 @@ show_cluster_info() {
     echo -e "\nVer logs:"
     echo "kubectl logs -f deployment/nodejs-api-deployment -n $NAMESPACE"
     echo "kubectl logs -f deployment/python-api-deployment -n $NAMESPACE"
-    echo -e "\nVer imágenes en Minikube:"
-    echo "minikube image ls"
+    echo -e "\nImagenes disponibles en Docker Hub:"
+    echo "docker pull ${DOCKER_USER}/api1-nodejs-fase2:latest"
+    echo "docker pull ${DOCKER_USER}/api1-python-fase2:latest"
 }
 
 # Ejecución principal
 main() {
     verify_dependencies
-    build_docker_images
+    verify_docker_images
     deploy_kubernetes
     setup_ingress
     show_cluster_info

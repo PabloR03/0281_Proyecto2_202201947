@@ -10,6 +10,9 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
+# Configuración de variables
+DOCKER_USER="pablo03r"
+
 info_msg() {
     echo -e "${YELLOW}ℹ️  $1${NC}"
 }
@@ -176,26 +179,34 @@ else
     important_msg "NGINX Ingress Controller no está instalado o no está en ingress-nginx namespace"
 fi
 
-# Limpiar imágenes de Minikube si está disponible
+# Limpiar imágenes de Minikube si está disponible (IMÁGENES ACTUALIZADAS)
 if command_exists minikube && minikube status >/dev/null 2>&1; then
     important_msg "Detectado Minikube en ejecución"
     read -p "¿Deseas eliminar las imágenes de Minikube? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         info_msg "Eliminando imágenes de Minikube..."
+        # Imágenes antiguas (por compatibilidad)
         minikube image rm nodejs-monitoring-api:latest 2>/dev/null || true
         minikube image rm python-monitoring-api:latest 2>/dev/null || true
+        # Nuevas imágenes de Docker Hub
+        minikube image rm ${DOCKER_USER}/api1-nodejs-fase2:latest 2>/dev/null || true
+        minikube image rm ${DOCKER_USER}/api1-python-fase2:latest 2>/dev/null || true
         success_msg "Imágenes eliminadas de Minikube"
     fi
 fi
 
-# Limpiar imágenes Docker locales
+# Limpiar imágenes Docker locales (IMÁGENES ACTUALIZADAS)
 read -p "¿Deseas eliminar las imágenes Docker locales? (y/N): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     info_msg "Eliminando imágenes Docker locales..."
+    # Imágenes antiguas
     docker rmi nodejs-monitoring-api:latest 2>/dev/null || true
     docker rmi python-monitoring-api:latest 2>/dev/null || true
+    # Nuevas imágenes de Docker Hub
+    docker rmi ${DOCKER_USER}/api1-nodejs-fase2:latest 2>/dev/null || true
+    docker rmi ${DOCKER_USER}/api1-python-fase2:latest 2>/dev/null || true
     
     # Limpiar imágenes dangling
     info_msg "Limpiando imágenes Docker sin etiqueta..."
@@ -217,36 +228,4 @@ fi
 
 echo ""
 echo "🎉 Limpieza completada exitosamente!"
-echo ""
-echo "🔍 Verificación final:"
-echo "======================"
-echo ""
-echo "📋 Recursos en el namespace so1-fase2:"
-kubectl get all -n so1-fase2 2>/dev/null || echo "✅ Namespace so1-fase2 no existe (limpio)"
-echo ""
-echo "🌐 Ingress resources:"
-kubectl get ingress -n so1-fase2 2>/dev/null || echo "✅ No hay Ingress en so1-fase2 (limpio)"
-echo ""
-echo "📊 PersistentVolumes relacionados:"
-kubectl get pv 2>/dev/null | grep -E "(postgres|so1-fase2)" || echo "✅ No hay PVs relacionados"
-echo ""
-echo "🖼️  Imágenes Docker locales:"
-docker images | grep -E "(nodejs-monitoring-api|python-monitoring-api)" || echo "✅ No hay imágenes locales"
-
-if command_exists minikube && minikube status >/dev/null 2>&1; then
-    echo ""
-    echo "🐳 Imágenes en Minikube:"
-    minikube image ls | grep -E "(nodejs-monitoring-api|python-monitoring-api)" || echo "✅ No hay imágenes en Minikube"
-fi
-
-echo ""
-echo "🌐 Estado del NGINX Ingress Controller:"
-kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller 2>/dev/null || echo "❌ NGINX Ingress Controller no encontrado"
-
-echo ""
-echo "💡 Comandos útiles adicionales:"
-echo "  - Para reiniciar Minikube: minikube delete && minikube start"
-echo "  - Para limpiar todo Docker: docker system prune -a"
-echo "  - Para ver todos los recursos: kubectl get all --all-namespaces"
-echo "  - Para reinstalar NGINX Ingress: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.2/deploy/static/provider/cloud/deploy.yaml"
-echo "  - Para habilitar Ingress en Minikube: minikube addons enable ingress"
+echo

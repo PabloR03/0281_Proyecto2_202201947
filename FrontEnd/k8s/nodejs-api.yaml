@@ -34,8 +34,8 @@ spec:
     spec:
       containers:
       - name: nodejs-api
-        image: nodejs-monitoring-api:latest
-        imagePullPolicy: Never  # Para usar imagen local
+        image: pablo03r/api1-nodejs-fase2:latest
+        imagePullPolicy: Always  # Siempre descargar desde Docker Hub
         ports:
         - containerPort: 7000
         envFrom:
@@ -101,3 +101,4 @@ spec:
             name: nodejs-api-service
             port:
               number: 7000
+

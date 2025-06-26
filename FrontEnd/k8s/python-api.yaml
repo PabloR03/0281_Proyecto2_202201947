@@ -33,8 +33,8 @@ spec:
     spec:
       containers:
       - name: python-api
-        image: python-monitoring-api:latest
-        imagePullPolicy: Never  # Para usar imagen local
+        image: pablo03r/api1-python-fase2:latest  # Imagen de Docker Hub
+        imagePullPolicy: Always  # Siempre descargar la imagen más reciente
         ports:
         - containerPort: 8000
         envFrom:
