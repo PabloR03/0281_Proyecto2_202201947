@@ -1,54 +1,27 @@
----
-# Namespace
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: so1-fase2
-  labels:
-    name: so1-fase2
-    project: monitoring-apis
-
----
-# Ingress Principal para Python API (50% del tráfico)
+# Ingress Principal para Python API
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: python-api-ingress
   namespace: so1-fase2
   annotations:
-    # Usar NGINX Ingress Controller
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "1m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    
-    # CORS si es necesario
-    nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
-    
-    # Header para identificar el backend
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header X-Backend-Used "python-api" always;
-      add_header X-Traffic-Split "50-50" always;
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Habilitamos session affinity basada en IP para mejor distribución
+    nginx.ingress.kubernetes.io/affinity: "cookie"
+    nginx.ingress.kubernetes.io/affinity-mode: "balanced"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
 spec:
   ingressClassName: nginx
   rules:
-  - host: monitoring-api.local  # Para acceso local desde dentro del cluster
-    http:
-      paths:
-      - path: /monitoring-data
-        pathType: Prefix
-        backend:
-          service:
-            name: python-api-service
-            port:
-              number: 8000
-  # Regla sin host específico para acceso interno
   - http:
       paths:
-      - path: /monitoring-data
-        pathType: Prefix
+      # Acceso directo a Python API
+      - path: /python(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: python-api-service
@@ -56,50 +29,34 @@ spec:
               number: 8000
 
 ---
-# Ingress Canary para NodeJS API (50% del tráfico)
+# Ingress Canary para Node.js API con mejor distribución
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: nodejs-api-ingress-canary
   namespace: so1-fase2
   annotations:
-    # Usar NGINX Ingress Controller
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/proxy-body-size: "1m"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
-    
-    # CORS si es necesario
-    nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization"
-    
-    # Configuración canary para 50% del tráfico
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Configuración Canary mejorada
     nginx.ingress.kubernetes.io/canary: "true"
     nginx.ingress.kubernetes.io/canary-weight: "50"
-    
-    # Header para identificar el backend
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header X-Backend-Used "nodejs-api" always;
-      add_header X-Traffic-Split "50-50" always;
+    # Usar hash consistente para mejor distribución
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$request_uri$remote_addr"
+    # Alternativa: usar canary-by-header para control más preciso
+    # nginx.ingress.kubernetes.io/canary-by-header: "X-Canary"
+    # nginx.ingress.kubernetes.io/canary-by-header-value: "true"
 spec:
   ingressClassName: nginx
   rules:
-  - host: monitoring-api.local  # Para acceso local desde dentro del cluster
-    http:
-      paths:
-      - path: /monitoring-data
-        pathType: Prefix
-        backend:
-          service:
-            name: nodejs-api-service
-            port:
-              number: 7000
-  # Regla sin host específico para acceso interno
   - http:
       paths:
-      - path: /monitoring-data
-        pathType: Prefix
+      # Esta ruta capturará el 50% del tráfico de /api
+      - path: /api(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
             name: nodejs-api-service
@@ -107,50 +64,74 @@ spec:
               number: 7000
 
 ---
-# Ingress adicional para endpoints de monitoreo y salud
+# Ingress separado para acceso directo a Node.js
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: monitoring-health-ingress
+  name: nodejs-api-direct-ingress
   namespace: so1-fase2
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      add_header X-Service-Type "health-check" always;
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
   rules:
-  - host: monitoring-api.local
-    http:
-      paths:
-      # Health check que va al Python API por defecto
-      - path: /health
-        pathType: Exact
-        backend:
-          service:
-            name: python-api-service
-            port:
-              number: 8000
-      # Status endpoint personalizado
-      - path: /status
-        pathType: Exact
-        backend:
-          service:
-            name: python-api-service
-            port:
-              number: 8000
-  # Reglas sin host específico
   - http:
       paths:
-      - path: /health
-        pathType: Exact
+      # Acceso directo a Node.js API
+      - path: /nodejs(/|$)(.*)
+        pathType: ImplementationSpecific
         backend:
           service:
-            name: python-api-service
+            name: nodejs-api-service
             port:
-              number: 8000
-      - path: /status
-        pathType: Exact
+              number: 7000
+
+---
+# Configuración alternativa: Un solo Ingress con ConfigMap personalizado
+# Esta es una opción más avanzada que requiere configuración adicional
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-load-balancer-conf
+  namespace: so1-fase2
+data:
+  load-balance.conf: |
+    upstream python-backend {
+        server python-api-service.so1-fase2.svc.cluster.local:8000 weight=1;
+    }
+    upstream nodejs-backend {
+        server nodejs-api-service.so1-fase2.svc.cluster.local:7000 weight=1;
+    }
+    upstream balanced-backend {
+        server python-api-service.so1-fase2.svc.cluster.local:8000 weight=1;
+        server nodejs-api-service.so1-fase2.svc.cluster.local:7000 weight=1;
+        least_conn;
+    }
+
+---
+# Métricas con distribución equitativa
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: metricas-python-ingress
+  namespace: so1-fase2
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr$request_uri"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /metricas
+        pathType: Prefix
         backend:
           service:
             name: python-api-service
@@ -158,41 +139,30 @@ spec:
               number: 8000
 
 ---
-# Service NodePort para acceso externo directo (opcional)
-apiVersion: v1
-kind: Service
+# Métricas Canary para Node.js con hash mejorado
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
-  name: monitoring-external-access-python
+  name: metricas-nodejs-ingress-canary
   namespace: so1-fase2
-  labels:
-    app: monitoring-external-python
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Configuración canary mejorada para métricas
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "50"
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr$request_uri"
 spec:
-  type: NodePort
-  ports:
-  - port: 8000
-    targetPort: 8000
-    nodePort: 30800
-    protocol: TCP
-    name: http-python
-  selector:
-    app: python-api
-
----
-# Service NodePort para acceso externo NodeJS (opcional)
-apiVersion: v1
-kind: Service
-metadata:
-  name: monitoring-external-access-nodejs
-  namespace: so1-fase2
-  labels:
-    app: monitoring-external-nodejs
-spec:
-  type: NodePort
-  ports:
-  - port: 7000
-    targetPort: 7000
-    nodePort: 30700
-    protocol: TCP
-    name: http-nodejs
-  selector:
-    app: nodejs-api
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /metricas
+        pathType: Prefix
+        backend:
+          service:
+            name: nodejs-api-service
+            port:
+              number: 7000
