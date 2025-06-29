@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directorio donde están los módulos
-MODULES_DIR="$HOME/Documentos/LabSopes1/Proyecto_Fase2/Modulos"
+MODULES_DIR="../Modulos"
 
 # Nombres de los módulos
 CPU_MODULE="cpu_202201947"
