@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enviador de Datos Fase 2 con Locust
+Enviador de Datos Fase 2 con Locust - CORREGIDO
 Envía datos de monitoreo al balanceador de carga usando Locust
 """
 
@@ -43,6 +43,11 @@ def load_json_data():
         logger.info(f"- Duración: {json_data['metadata']['duration_minutes']} minutos")
         logger.info(f"- Registros disponibles: {len(monitoring_records)}")
         
+        # Mostrar ejemplo de los primeros registros para debug
+        if monitoring_records:
+            logger.info(f"Ejemplo de registro: {monitoring_records[0]}")
+            logger.info(f"Campos disponibles: {list(monitoring_records[0].keys())}")
+        
         return True
         
     except Exception as e:
@@ -65,34 +70,27 @@ class EnviadorDatosMonitoreo(HttpUser):
     
     @task(10)  # Peso 10 - tarea principal
     def enviar_datos_monitoreo(self):
-        """Enviar datos de monitoreo al endpoint /api/monitoring-data"""
+        """Enviar datos de monitoreo al endpoint correcto"""
         global monitoring_records
         
         if not monitoring_records:
             logger.error("No hay datos disponibles para enviar")
             return
         
-        # Seleccionar un registro aleatorio o secuencial
-        if hasattr(self, 'modo_secuencial') and self.modo_secuencial:
-            # Modo secuencial
-            record = monitoring_records[self.record_index % len(monitoring_records)]
-            self.record_index += 1
-        else:
-            # Modo aleatorio (por defecto)
-            record = random.choice(monitoring_records)
+        # Seleccionar un registro aleatorio
+        record = random.choice(monitoring_records)
         
-        # Preparar payload
-        payload = {
-            'phase': 2,
-            'user_id': self.user_id,
-            'sent_at': datetime.now().isoformat(),
-            'original_timestamp': record.get('timestamp_received', record.get('hora')),
-            'data': record
-        }
+        # Debug: mostrar qué datos estamos enviando
+        if random.random() < 0.01:  # Solo 1% de las veces para no saturar logs
+            logger.info(f"Enviando registro: {record}")
         
-        # Enviar POST request
+        # Enviar el registro directamente como viene del JSON
+        # Sin wrapper, tal como está en el archivo original
+        payload = record
+        
+        # USAR LA RUTA CORRECTA SEGÚN TU INGRESS
         with self.client.post(
-            "/api/monitoring-data",
+            "/monitoring-data",  # Cambiado de /metricas a /monitoring-data
             json=payload,
             headers={
                 'Content-Type': 'application/json',
@@ -103,31 +101,27 @@ class EnviadorDatosMonitoreo(HttpUser):
         ) as response:
             if response.status_code == 200:
                 response.success()
+            elif response.status_code == 201:  # Algunos APIs devuelven 201 para creación
+                response.success()
             else:
                 response.failure(f"Código de estado: {response.status_code}")
+                # Debug: mostrar respuesta de error
+                if random.random() < 0.1:  # 10% de las veces
+                    logger.error(f"Error response: {response.text[:200]}")
     
-    @task(2)  # Peso 2 - tarea secundaria para probar otras rutas
-    def probar_python_directo(self):
-        """Probar acceso directo a Python API"""
-        with self.client.get("/python/health", catch_response=True, name="salud_python") as response:
-            if response.status_code in [200, 404]:  # 404 es OK si no existe el endpoint
+    @task(2)  # Tarea secundaria para GET
+    def obtener_datos_monitoreo(self):
+        """Obtener datos existentes"""
+        with self.client.get("/monitoring-data", catch_response=True, name="obtener_datos_monitoreo") as response:
+            if response.status_code in [200, 404]:  # 200 OK o 404 si no hay datos
                 response.success()
             else:
                 response.failure(f"Código de estado: {response.status_code}")
     
-    @task(2)  # Peso 2 - tarea secundaria para probar otras rutas
-    def probar_nodejs_directo(self):
-        """Probar acceso directo a Node.js API"""
-        with self.client.get("/nodejs/health", catch_response=True, name="salud_nodejs") as response:
-            if response.status_code in [200, 404]:  # 404 es OK si no existe el endpoint
-                response.success()
-            else:
-                response.failure(f"Código de estado: {response.status_code}")
-    
-    @task(1)  # Peso 1 - tarea de métricas
-    def probar_metricas(self):
-        """Probar endpoint de métricas"""
-        with self.client.get("/metricas", catch_response=True, name="metricas") as response:
+    @task(1)  # Peso 1 - tarea de health check
+    def health_check(self):
+        """Probar health check del root"""
+        with self.client.get("/", catch_response=True, name="health_check") as response:
             if response.status_code in [200, 404]:  # 404 es OK si no existe el endpoint
                 response.success()
             else:
@@ -148,9 +142,9 @@ def al_iniciar_test(environment, **kwargs):
         environment.runner.quit()
         return
     
-    logger.info(f"Objetivo: {environment.host}/api/monitoring-data")
+    logger.info(f"Objetivo: {environment.host}/monitoring-data")  # Actualizado
     
-    # Corregir el acceso a parsed_options
+    # Obtener configuración
     try:
         if hasattr(environment, 'parsed_options'):
             num_users = getattr(environment.parsed_options, 'num_users', 'N/A')
@@ -190,8 +184,8 @@ if __name__ == "__main__":
     env = Environment(user_classes=[EnviadorDatosMonitoreo])
     env.create_local_runner()
     
-    # Configurar host
-    env.host = "http://192.168.49.2"
+    # Configurar host - usando la IP externa del ingress
+    env.host = "http://34.70.154.124"  # Tu IP actual
     
     # Cargar datos antes de iniciar
     if not load_json_data():
@@ -217,21 +211,10 @@ if __name__ == "__main__":
     print(f"RPS promedio: {stats.total.current_rps:.2f}")
     print(f"Tiempo promedio respuesta: {stats.total.avg_response_time:.2f}ms")
 
-# Comandos de ejemplo:
-# 1 minuto con 50 usuarios
-# locust -f phase2_sender.py --host=http://192.168.49.2 -u 50 -r 5 -t 1m --headless
-# 
-# Verificar pods:
+# COMANDOS ACTUALIZADOS:
+# locust -f phase2_sender_fixed.py --host=http://34.70.154.124 -u 150 -r 1 -t 10s --headless
+#
+# Para verificar:
 # kubectl get pods -n so1-fase2
-# 
-# Conectar a base de datos:
-# kubectl exec -it -n so1-fase2 postgres-deployment-7b7d68b47-XXXXX -- psql -U admin monitoring
-# SELECT * FROM monitoring_data;
-
-
-
-# 1 min 50 usuarios
-# locust -f phase2_locust_sender.py --host=http://192.168.49.2 -u 50 -r 5 -t 1m --headless
-# kubectl get pods -n so1-fase2
-# kubectl exec -it -n so1-fase2 postgres-deployment-7b7d68b47-XXXXX -- psql -U admin monitoring
-# SELECT * FROM monitoring_data;
+# kubectl logs -n so1-fase2 deployment/api-python-deployment
+# kubectl logs -n so1-fase2 deployment/api-nodejs-deployment

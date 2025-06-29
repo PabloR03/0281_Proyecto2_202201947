@@ -36,7 +36,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Función para obtener el último dato de monitoreo
+// SOLUCIÓN 1: Ordenar por ID (más confiable para el último registro insertado)
 async function getLatestMonitoringData() {
   try {
     const query = `
@@ -58,7 +58,7 @@ async function getLatestMonitoringData() {
         api,
         created_at
       FROM fase2.monitoring_data 
-      ORDER BY timestamp_received DESC 
+      ORDER BY id DESC 
       LIMIT 1
     `;
 
@@ -70,7 +70,74 @@ async function getLatestMonitoringData() {
   }
 }
 
-// Función para obtener historial de datos (últimos 20 registros)
+// SOLUCIÓN ALTERNATIVA: Ordenar por created_at si es más confiable que timestamp_received
+async function getLatestMonitoringDataByCreatedAt() {
+  try {
+    const query = `
+      SELECT 
+        id,
+        total_ram,
+        ram_libre,
+        uso_ram,
+        porcentaje_ram,
+        porcentaje_cpu_uso,
+        porcentaje_cpu_libre,
+        procesos_corriendo,
+        total_procesos,
+        procesos_durmiendo,
+        procesos_zombie,
+        procesos_parados,
+        hora,
+        timestamp_received,
+        api,
+        created_at
+      FROM fase2.monitoring_data 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `;
+
+    const result = await pool.query(query);
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error al obtener último dato:', error);
+    return null;
+  }
+}
+
+// SOLUCIÓN AVANZADA: Obtener el registro con el ID máximo
+async function getLatestMonitoringDataMaxId() {
+  try {
+    const query = `
+      SELECT 
+        id,
+        total_ram,
+        ram_libre,
+        uso_ram,
+        porcentaje_ram,
+        porcentaje_cpu_uso,
+        porcentaje_cpu_libre,
+        procesos_corriendo,
+        total_procesos,
+        procesos_durmiendo,
+        procesos_zombie,
+        procesos_parados,
+        hora,
+        timestamp_received,
+        api,
+        created_at
+      FROM fase2.monitoring_data 
+      WHERE id = (SELECT MAX(id) FROM fase2.monitoring_data)
+    `;
+
+    const result = await pool.query(query);
+    return result.rows[0] || null;
+  } catch (error) {
+    console.error('Error al obtener último dato:', error);
+    return null;
+  }
+}
+
+// Función para obtener historial de datos (últimos 20 registros) - TAMBIÉN CORREGIDA
 async function getHistoricalData() {
   try {
     const query = `
@@ -78,9 +145,10 @@ async function getHistoricalData() {
         porcentaje_ram,
         porcentaje_cpu_uso,
         procesos_corriendo,
-        timestamp_received
+        timestamp_received,
+        id
       FROM fase2.monitoring_data 
-      ORDER BY timestamp_received DESC 
+      ORDER BY id DESC 
       LIMIT 20
     `;
 
@@ -92,6 +160,27 @@ async function getHistoricalData() {
   }
 }
 
+// Variable para mantener el último ID procesado (opcional para optimización)
+let lastProcessedId = null;
+
+// Función mejorada para verificar si hay nuevos datos
+async function hasNewData() {
+  try {
+    const query = `SELECT MAX(id) as max_id FROM fase2.monitoring_data`;
+    const result = await pool.query(query);
+    const currentMaxId = result.rows[0]?.max_id;
+    
+    if (lastProcessedId === null || currentMaxId > lastProcessedId) {
+      lastProcessedId = currentMaxId;
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error al verificar nuevos datos:', error);
+    return true; // En caso de error, asumir que hay nuevos datos
+  }
+}
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('Cliente conectado:', socket.id);
@@ -100,6 +189,7 @@ io.on('connection', (socket) => {
   getLatestMonitoringData().then(data => {
     if (data) {
       socket.emit('monitoring-data', data);
+      console.log(`Enviando dato inicial con ID: ${data.id}`);
     }
   });
 
@@ -113,14 +203,24 @@ io.on('connection', (socket) => {
   });
 });
 
-// Función para emitir datos en tiempo real
+// Función mejorada para emitir datos en tiempo real solo si hay cambios
 async function broadcastLatestData() {
-  const latestData = await getLatestMonitoringData();
-  const historicalData = await getHistoricalData();
-  
-  if (latestData) {
-    io.emit('monitoring-data', latestData);
-    io.emit('historical-data', historicalData);
+  try {
+    // Verificar si hay nuevos datos antes de hacer la consulta completa
+    const hasNew = await hasNewData();
+    
+    if (hasNew) {
+      const latestData = await getLatestMonitoringData();
+      const historicalData = await getHistoricalData();
+      
+      if (latestData) {
+        console.log(`Broadcasting nuevo dato con ID: ${latestData.id}`);
+        io.emit('monitoring-data', latestData);
+        io.emit('historical-data', historicalData);
+      }
+    }
+  } catch (error) {
+    console.error('Error en broadcast:', error);
   }
 }
 
@@ -147,6 +247,32 @@ app.get('/api/monitoring/latest', async (req, res) => {
       message: 'Error al obtener los datos de monitoreo',
       error: error.message,
       timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Nueva ruta para debug - ver todos los IDs
+app.get('/api/monitoring/debug', async (req, res) => {
+  try {
+    const query = `
+      SELECT id, timestamp_received, created_at 
+      FROM fase2.monitoring_data 
+      ORDER BY id DESC 
+      LIMIT 10
+    `;
+    const result = await pool.query(query);
+    
+    res.status(200).json({
+      success: true,
+      message: 'Últimos 10 registros para debug',
+      data: result.rows,
+      lastProcessedId: lastProcessedId,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
@@ -186,6 +312,7 @@ app.get('/api/health', async (req, res) => {
       database: 'Conectada',
       websocket: 'Activo',
       port: PORT,
+      lastProcessedId: lastProcessedId,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -203,11 +330,12 @@ app.get('/api/health', async (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     message: 'API de Monitoreo con WebSocket',
-    version: '2.0.0',
+    version: '2.0.1',
     endpoints: {
       health: '/api/health',
       latest_monitoring: '/api/monitoring/latest',
-      history: '/api/monitoring/history'
+      history: '/api/monitoring/history',
+      debug: '/api/monitoring/debug'
     },
     websocket: 'ws://localhost:' + PORT,
     port: PORT
@@ -229,6 +357,7 @@ server.listen(PORT, () => {
   console.log(`API con WebSocket ejecutándose en puerto ${PORT}`);
   console.log(`Endpoint principal: http://localhost:${PORT}/api/monitoring/latest`);
   console.log(`Health check: http://localhost:${PORT}/api/health`);
+  console.log(`Debug endpoint: http://localhost:${PORT}/api/monitoring/debug`);
   console.log(`WebSocket: ws://localhost:${PORT}`);
 });
 
