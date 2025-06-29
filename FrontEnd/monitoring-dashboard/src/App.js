@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import io from 'socket.io-client';
 
 // Variables de entorno con valores por defecto
@@ -130,6 +130,12 @@ const styles = {
   chartWrapper: {
     height: '256px'
   },
+  pieChartWrapper: {
+    height: '300px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
   legend: {
     display: 'flex',
     alignItems: 'center',
@@ -223,6 +229,23 @@ const styles = {
     marginBottom: '24px',
     fontSize: '12px',
     color: '#9ca3af'
+  },
+  apiIndicator: {
+    backgroundColor: '#1f2937',
+    border: '1px solid #374151',
+    borderRadius: '6px',
+    padding: '8px 16px',
+    fontSize: '12px',
+    color: '#ffffff',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px'
+  },
+  apiDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: '#10b981'
   }
 };
 
@@ -385,6 +408,75 @@ const Dashboard = () => {
     </div>
   );
 
+  // Datos para gráficas circulares
+  const getCpuData = () => {
+    if (!currentData) return [];
+    return [
+      { name: 'Usado', value: currentData.porcentaje_cpu_uso, color: '#3b82f6' },
+      { name: 'Libre', value: currentData.porcentaje_cpu_libre, color: '#374151' }
+    ];
+  };
+
+  const getRamData = () => {
+    if (!currentData) return [];
+    return [
+      { name: 'Usado', value: currentData.porcentaje_ram, color: '#10b981' },
+      { name: 'Libre', value: 100 - currentData.porcentaje_ram, color: '#374151' }
+    ];
+  };
+
+  // Datos para gráfica de barras de procesos
+  const getProcessData = () => {
+    if (!currentData) return [];
+    return [
+      { name: 'Running', value: currentData.procesos_corriendo, color: '#8b5cf6' },
+      { name: 'Sleeping', value: currentData.procesos_durmiendo, color: '#6b7280' },
+      { name: 'Zombie', value: currentData.procesos_zombie, color: '#ef4444' },
+      { name: 'Stopped', value: currentData.procesos_parados, color: '#eab308' }
+    ];
+  };
+
+  const CustomTooltip = ({ active, payload, label }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div style={{
+          backgroundColor: '#1f2937',
+          border: '1px solid #374151',
+          borderRadius: '4px',
+          padding: '8px 12px',
+          fontSize: '12px',
+          color: '#ffffff'
+        }}>
+          <p>{`${payload[0].name}: ${payload[0].value}${payload[0].name.includes('CPU') || payload[0].name.includes('RAM') ? '%' : ''}`}</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const PieChartCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent, value, name }) => {
+    const RADIAN = Math.PI / 180;
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    if (percent < 0.05) return null; // No mostrar etiquetas muy pequeñas
+
+    return (
+      <text 
+        x={x} 
+        y={y} 
+        fill="#ffffff" 
+        textAnchor={x > cx ? 'start' : 'end'} 
+        dominantBaseline="central"
+        fontSize="12"
+        fontWeight="bold"
+      >
+        {`${(percent * 100).toFixed(0)}%`}
+      </text>
+    );
+  };
+
   if (!currentData && !connectionError) {
     return (
       <div style={styles.loadingContainer}>
@@ -413,7 +505,15 @@ const Dashboard = () => {
             <h1 style={styles.title}>SYSTEM MONITOR</h1>
             <p style={styles.subtitle}>Real-time system performance dashboard</p>
           </div>
-          <ConnectionStatus />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            {currentData && (
+              <div style={styles.apiIndicator}>
+                <div style={styles.apiDot}></div>
+                <span>API: {currentData.api}</span>
+              </div>
+            )}
+            <ConnectionStatus />
+          </div>
         </div>
       </div>
 
@@ -464,23 +564,118 @@ const Dashboard = () => {
               />
             </div>
 
-            {/* Process Status */}
-            <div style={{...styles.grid, ...styles.gridCols3}}>
-              <MetricCard
-                title="Sleeping"
-                value={currentData.procesos_durmiendo}
-                color="bg-gray-500"
-              />
-              <MetricCard
-                title="Zombie"
-                value={currentData.procesos_zombie}
-                color="bg-red-500"
-              />
-              <MetricCard
-                title="Stopped"
-                value={currentData.procesos_parados}
-                color="bg-yellow-500"
-              />
+            {/* Gráficas circulares para CPU y RAM */}
+            <div style={{...styles.grid, ...styles.gridCols2}}>
+              {/* CPU Pie Chart */}
+              <div style={styles.chartContainer}>
+                <h3 style={styles.chartTitle}>CPU USAGE DISTRIBUTION</h3>
+                <div style={styles.pieChartWrapper}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={getCpuData()}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={PieChartCustomLabel}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        strokeWidth={2}
+                        stroke="#000000"
+                      >
+                        {getCpuData().map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={styles.legend}>
+                  <div style={styles.legendItem}>
+                    <div style={{...styles.legendDot, backgroundColor: '#3b82f6'}}></div>
+                    <span style={styles.legendText}>Usado ({currentData.porcentaje_cpu_uso}%)</span>
+                  </div>
+                  <div style={styles.legendItem}>
+                    <div style={{...styles.legendDot, backgroundColor: '#374151'}}></div>
+                    <span style={styles.legendText}>Libre ({currentData.porcentaje_cpu_libre}%)</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* RAM Pie Chart */}
+              <div style={styles.chartContainer}>
+                <h3 style={styles.chartTitle}>MEMORY USAGE DISTRIBUTION</h3>
+                <div style={styles.pieChartWrapper}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={getRamData()}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={PieChartCustomLabel}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="value"
+                        strokeWidth={2}
+                        stroke="#000000"
+                      >
+                        {getRamData().map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<CustomTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div style={styles.legend}>
+                  <div style={styles.legendItem}>
+                    <div style={{...styles.legendDot, backgroundColor: '#10b981'}}></div>
+                    <span style={styles.legendText}>Usado ({currentData.porcentaje_ram}%)</span>
+                  </div>
+                  <div style={styles.legendItem}>
+                    <div style={{...styles.legendDot, backgroundColor: '#374151'}}></div>
+                    <span style={styles.legendText}>Libre ({(100 - currentData.porcentaje_ram).toFixed(1)}%)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Gráfica de barras para procesos */}
+            <div style={styles.chartContainer}>
+              <h3 style={styles.chartTitle}>PROCESS STATUS DISTRIBUTION</h3>
+              <div style={styles.chartWrapper}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={getProcessData()} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis 
+                      dataKey="name" 
+                      stroke="#9CA3AF"
+                      fontSize={12}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis 
+                      stroke="#9CA3AF"
+                      fontSize={12}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar 
+                      dataKey="value" 
+                      fill="#8b5cf6"
+                      radius={[4, 4, 0, 0]}
+                    >
+                      {getProcessData().map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </>
         )}
@@ -490,7 +685,7 @@ const Dashboard = () => {
           <div style={{...styles.grid, ...styles.gridCols2}}>
             {/* CPU & Memory Chart */}
             <div style={styles.chartContainer}>
-              <h3 style={styles.chartTitle}>CPU & MEMORY USAGE</h3>
+              <h3 style={styles.chartTitle}>CPU & MEMORY USAGE TIMELINE</h3>
               <div style={styles.chartWrapper}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={historicalData}>
@@ -509,6 +704,7 @@ const Dashboard = () => {
                       tickLine={false}
                       domain={[0, 100]}
                     />
+                    <Tooltip content={<CustomTooltip />} />
                     <Line 
                       type="monotone" 
                       dataKey="porcentaje_cpu_uso" 
@@ -542,7 +738,7 @@ const Dashboard = () => {
 
             {/* Running Processes Chart */}
             <div style={styles.chartContainer}>
-              <h3 style={styles.chartTitle}>RUNNING PROCESSES</h3>
+              <h3 style={styles.chartTitle}>RUNNING PROCESSES TIMELINE</h3>
               <div style={styles.chartWrapper}>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={historicalData}>
@@ -560,6 +756,7 @@ const Dashboard = () => {
                       axisLine={false}
                       tickLine={false}
                     />
+                    <Tooltip content={<CustomTooltip />} />
                     <Area 
                       type="monotone" 
                       dataKey="procesos_corriendo" 

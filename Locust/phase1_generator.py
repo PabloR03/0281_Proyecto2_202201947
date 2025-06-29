@@ -222,3 +222,7 @@ if __name__ == "__main__":
     print("  --headless: ejecutar sin interfaz web")
     print("\n📁 Archivo de salida: locust_output_202201947.json")
     print("="*70)
+
+
+
+# locust -f phase1_generator.py --host=http://35.188.88.211:8080 -u 300 -r 1 -t 180s --headless

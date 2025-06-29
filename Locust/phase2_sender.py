@@ -218,3 +218,19 @@ if __name__ == "__main__":
 # kubectl get pods -n so1-fase2
 # kubectl logs -n so1-fase2 deployment/api-python-deployment
 # kubectl logs -n so1-fase2 deployment/api-nodejs-deployment
+
+
+
+
+
+
+
+# -- SELECT * FROM fase2.monitoring_data;
+
+# SELECT api, COUNT(*) AS cantidad
+# FROM fase2.monitoring_data
+# WHERE api IN ('Node.js', 'Python')
+# GROUP BY api;
+
+
+# locust -f phase2_sender.py --host=http://34.70.154.124 -u 150 -r 1 -t 5s --headless
