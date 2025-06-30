@@ -1,7 +1,7 @@
 
 # Sistemas Operativos 1 A - Vacaciones Junio 2025
 
-## Proyecto 1
+## Proyecto 2
 
 ### Segundo Semestre 2024
 
@@ -12,315 +12,539 @@ Carné: 202201947
 Correo: pabloa10rodriguez@gmail.com  
 ```
 
-## Descripción del Proyecto
 
-Este proyecto consiste en el desarrollo de un entorno de pruebas y herramientas para estudiar y manipular conceptos fundamentales de Sistemas Operativos, incluyendo la interacción con el kernel, manejo de procesos, y comunicación entre módulos usando APIs desarrolladas en Node.js y Go.
+## Descripción General
 
-Se implementaron scripts automatizados en Bash para facilitar la creación, gestión y limpieza de contenedores Docker que ejecutan aplicaciones de estrés, simulación y monitoreo del sistema. Además, se desarrollaron herramientas para graficar métricas y visualizar datos relevantes para el análisis del comportamiento del sistema operativo bajo carga.
+El sistema está compuesto por cinco APIs complementarias que forman una arquitectura distribuida de monitoreo de sistema:
 
----
+1. **API de Recolección (Go)**: Implementada en Go, obtiene métricas del sistema operativo en tiempo real a través de archivos `/proc` personalizados y las expone mediante endpoints REST.
 
-## Objetivos
+2. **API de Persistencia (Node.js)**: Desarrollada en Node.js/Express, recibe datos de monitoreo vía HTTP, los procesa y almacena en una base de datos PostgreSQL alojada en Google Cloud Platform.
 
-### Objetivo General
+3. **API de Persistencia (Python)**: Implementada en Python/Flask, proporciona una alternativa de persistencia con funcionalidades idénticas a la API Node.js, utilizando la misma base de datos PostgreSQL en GCP.
 
-* Desarrollar un conjunto de herramientas y scripts para facilitar la experimentación y análisis en entornos controlados de sistemas operativos, usando Docker, APIs en Node.js y Go, y módulos del kernel.
+4. **API de Consulta (Node.js)**: Desarrollada en Node.js/Express, lee la base de datos PostgreSQL y proporciona acceso a la última lectura de métricas almacenadas, funcionando como interfaz de consulta de datos históricos.
 
-### Objetivos Específicos
+5. **API de Frontend (React)**: Aplicación web desarrollada en React que consume datos de las APIs del sistema mediante WebSockets y HTTP, proporcionando una interfaz gráfica interactiva para visualización en tiempo real de métricas del sistema con dashboards, gráficas y monitoreo continuo.
 
-* Automatizar la creación y gestión de contenedores Docker para pruebas de estrés en el sistema.
-* Implementar APIs para la interacción entre módulos y la recolección de datos del sistema.
-* Visualizar datos y métricas a través de gráficos generados a partir de las APIs.
-* Documentar y facilitar la comprensión de conceptos relacionados con el kernel y procesos del sistema operativo.
+## Arquitectura del Sistema
 
----
+### Componentes Principales
 
-## Cómo usar el proyecto
+El sistema implementa una arquitectura distribuida con los siguientes componentes:
 
-1. **Requisitos Previos**
+#### API de Recolección (Go) - Puerto 8080
+**Monitoreadores Concurrentes**: Tres gorrutinas independientes que ejecutan de forma paralela el monitoreo continuo de CPU, RAM y procesos del sistema, actualizando los datos cada 5 segundos.
 
-   * Docker instalado y corriendo en tu máquina.
-   * Node.js y Go configurados para ejecutar los servicios API.
-   * Acceso a la terminal Bash para ejecutar scripts de gestión.
+**Servidor HTTP**: Un servidor web que expone múltiples endpoints REST para el acceso a las métricas del sistema, operando en el puerto 8080.
 
-2. **Despliegue de contenedores de estrés**
-   Ejecuta el script `stress_containers.sh` para crear 10 contenedores Docker que generarán carga en CPU, I/O, memoria y disco.
+**Sincronización de Datos**: Implementación de mutex para garantizar el acceso seguro a los datos compartidos entre las gorrutinas de monitoreo y las peticiones HTTP.
 
-3. **Limpieza de contenedores**
-   Para eliminar los contenedores de estrés creados, ejecuta el script `remove_containers.sh`.
+#### API de Persistencia (Node.js) - Puerto 7000
+**Servidor Express**: Aplicación Node.js que opera en el puerto 7000, configurada con middleware de seguridad (Helmet), CORS y manejo de JSON con límite de 50MB.
 
-4. **Ejecución de APIs**
-   Levanta los servicios API desarrollados en Node.js y Go para la recolección y exposición de métricas del sistema.
+**Conexión a Base de Datos**: Pool de conexiones PostgreSQL configurado para conectarse a una instancia de Cloud SQL en GCP (IP: 34.56.148.15).
 
-5. **Visualización de métricas**
-   Accede a la interfaz gráfica proporcionada para visualizar los datos recolectados y analizar el comportamiento del sistema operativo bajo pruebas.
+**Procesamiento de Datos**: Sistema de validación y parsing de datos JSON recibidos, con manejo especializado de formatos de fecha y hora.
 
+**Persistencia Transaccional**: Implementación de transacciones para operaciones críticas de base de datos.
 
+#### API de Persistencia (Python) - Puerto 8000
+**Servidor Flask**: Aplicación Python/Flask que opera en el puerto 8000, configurada con CORS habilitado para permitir peticiones desde diferentes orígenes.
 
+**Conexión a Base de Datos**: Implementación de conexiones PostgreSQL usando psycopg2 con cursor de diccionarios para facilitar el manejo de datos estructurados.
 
+**Procesamiento de Datos**: Sistema robusto de parsing de fechas con múltiples formatos soportados, incluyendo manejo de microsegundos y formatos ISO.
 
----
+**Logging Configurado**: Sistema de logging integrado para monitoreo de operaciones y debugging de errores.
 
-## COMANDOS PARA EJECUTAR
+**Manejo de Errores**: Middleware personalizado para captura y manejo de errores 404 y 500 con respuestas estructuradas.
 
-### 1. Preparación del Entorno
+#### API de Consulta (Node.js) - Puerto 9000
+**Servidor Express**: Aplicación Node.js que opera en el puerto 9000, configurada con middleware CORS para permitir acceso desde diferentes orígenes.
 
-#### Crear Módulos
-Compila, carga y verifica dos módulos del kernel (cpu_202201947 y ram_202201947).
+**Conexión de Solo Lectura**: Pool de conexiones PostgreSQL optimizado para consultas de lectura, conectándose a la misma instancia de Cloud SQL en GCP (IP: 34.56.148.15).
 
-Funciones principales:
+**Procesamiento de Consultas**: Sistema especializado en la recuperación de la última lectura de métricas almacenadas en la base de datos.
 
-Definir rutas y nombres de módulos:
-Usa variables para ubicar los módulos (MODULES_DIR) y sus nombres (CPU_MODULE, RAM_MODULE).
+**Respuesta Estructurada**: Formateo de datos de salida para proporcionar acceso directo a las métricas más recientes del sistema.
 
-Colores para mensajes:
-Define códigos ANSI para mensajes de error y éxito.
+#### API de Frontend (React) - Puerto 3000
+**Aplicación React**: Interfaz web desarrollada con React que proporciona visualización interactiva en tiempo real de las métricas del sistema.
 
-Función check_error:
-Verifica si el comando anterior falló; si es así, muestra un error y termina el script.
+**Conexión WebSocket**: Implementación de Socket.IO cliente para comunicación bidireccional en tiempo real con el servidor de consulta, habilitando actualizaciones automáticas de datos.
 
-Cambiar al directorio de módulos:
-Se mueve a MODULES_DIR o termina si falla.
+**Dashboard Interactivo**: Sistema de visualización con múltiples componentes que incluyen tarjetas de métricas, gráficas de líneas temporales, gráficas circulares para distribución de recursos y gráficas de barras para estados de procesos.
 
-Compilar módulos:
-Ejecuta make clean && make; si falla, finaliza con error.
+**Gestión de Estado**: Implementación con React hooks (useState, useEffect) para manejo del estado de la aplicación, datos históricos, estado de conexión y actualizaciones en tiempo real.
 
-Cargar módulos al kernel:
-Usa insmod para insertar ambos .ko; verifica errores.
+**Visualización de Datos**: Integración con Recharts para renderizado de gráficas interactivas incluyendo LineChart, AreaChart, BarChart y PieChart con tooltips personalizados y leyendas.
 
-Verificar carga de módulos:
-Usa lsmod | grep para confirmar que los módulos están activos.
+**Indicadores de Estado**: Sistema de monitoreo de conexión con indicadores visuales de estado, gestión de errores de conexión y timestamps de última actualización.
 
-Verificar archivos en /proc:
-Comprueba existencia y muestra contenido de /proc/cpu_202201947 y /proc/ram_202201947.
+**Sistema de Configuración**: Manejo de variables de entorno para configuración de URLs de Socket.IO, APIs, intervalos de actualización y límites de datos históricos.
 
-```bash
-./install_modules.sh
-```
+**Interfaz Responsiva**: Diseño adaptativo con CSS-in-JS, sistema de grid responsivo, tema oscuro y animaciones para una experiencia de usuario moderna.
 
-#### Leer Módulos
-Lee y muestra la información de los módulos de kernel cpu_202201947 y ram_202201947 cargados en /proc.
+**Manejo de Datos Históricos**: Procesamiento y visualización de series temporales con límite configurable de puntos históricos y formateo automático de timestamps.
 
-Funciones principales:
+**Debugging y Monitoreo**: Sistema integrado de logging en consola, información de debug visible en la interfaz y manejo robusto de estados de carga y error.
 
-Definir nombres de módulos:
-Usa variables para identificar los módulos cpu_202201947 y ram_202201947.
+## Estructura de Datos
 
-Colores para mensajes:
-Define colores para mensajes de estado (éxito y error).
+### API de Recolección (Go)
 
-Verificar carga de módulos:
-Utiliza lsmod | grep para comprobar si los módulos están activos. Si no lo están, muestra error y termina.
+#### Estructuras de Entrada
 
-Leer archivos /proc:
-Verifica existencia de /proc/cpu_202201947 y /proc/ram_202201947. Si existen, imprime su contenido; si no, muestra error.
-```bash
-./read_modules.sh
-```
+CPUData: Contiene el porcentaje de uso del procesador
+RAMData: Incluye memoria total, libre, en uso y porcentaje de utilización
+ProcesosData: Información sobre estados de procesos del sistema
 
-#### Eliminar Módulos
-Elimina los módulos de kernel cpu_202201947 y ram_202201947, limpia archivos de compilación y verifica su correcta eliminación de /proc.
+#### Estructura de Respuesta Combinada
+La estructura `CombinedMetrics` proporciona una vista unificada de todas las métricas del sistema, incluyendo cálculos derivados como el porcentaje de CPU libre y marca temporal de la consulta.
 
-Funciones principales:
+### API de Persistencia (Node.js y Python)
 
-Define nombres de módulos y ruta de trabajo (MODULES_DIR).
+#### Base de Datos PostgreSQL
+**Esquema**: fase2
+**Tablas Principales**:
+- `monitoring_data`: Almacena las métricas de sistema recolectadas
+- `metadata`: Registra información sobre las sesiones de recolección
 
-Establece colores para mensajes de éxito y error.
+#### Campos de Monitoreo
 
-Implementa la función check_error para validar la ejecución correcta de comandos.
+total_ram, ram_libre, uso_ram, porcentaje_ram
+porcentaje_cpu_uso, porcentaje_cpu_libre
+procesos_corriendo, total_procesos, procesos_durmiendo
+procesos_zombie, procesos_parados
+hora, timestamp_received, api
 
-Cambia al directorio de módulos especificado.
 
-Verifica si los módulos están cargados con lsmod y los elimina con rmmod.
+### API de Consulta (Node.js)
 
-Muestra mensajes de confirmación de descarga exitosa o indica si el módulo no estaba cargado.
+#### Estructura de Consulta
+La API de consulta accede a la tabla `monitoring_data` del esquema `fase2` para recuperar el registro más reciente basado en el campo `id` ordenado de forma descendente.
 
-Ejecuta make clean para eliminar archivos generados por compilación.
+#### Formato de Respuesta
+Retorna la última lectura completa de métricas incluyendo todos los campos de monitoreo con sus valores más actualizados disponibles en la base de datos.
 
-Verifica que los archivos /proc/cpu_202201947 y /proc/ram_202201947 hayan sido eliminados.
-```bash
-./remove_modules.sh
-```
+### API de Frontend (React)
 
----
+#### Estado de la Aplicación
+**currentData**: Almacena la última lectura de métricas recibida del sistema de monitoreo en tiempo real.
 
-### 2. Construcción y Ejecución de la Aplicación
+**historicalData**: Array que mantiene un historial limitado de métricas para visualización de tendencias temporales.
 
-#### Levantar o Crear Contenedores con Docker Compose
-Prepara y despliega un entorno Docker para el proyecto, verificando herramientas, imágenes, conectividad y estado de los contenedores.
+**isConnected**: Estado booleano que indica la conectividad con el servidor WebSocket.
 
-Funciones principales:
+**lastUpdate**: Timestamp de la última actualización de datos recibida.
 
-Define colores para mensajes de salida (print_success, print_warning, print_error).
+**connectionError**: Información sobre errores de conexión para debugging y notificación al usuario.
 
-Verifica la existencia y funcionamiento de Docker y Docker Compose.
+#### Estructura de Configuración
 
-Cambia al directorio raíz del proyecto.
+socketUrl: URL del servidor Socket.IO para conexión WebSocket
+apiUrl: URL base de la API para peticiones HTTP
+refreshInterval: Intervalo de actualización en milisegundos
+maxHistoricalPoints: Límite máximo de puntos históricos a mantener
 
-Comprueba si existe docker-compose.yml.
 
-Limpia contenedores, volúmenes e imágenes de despliegues previos.
+#### Componentes de Visualización
+**MetricCard**: Componente para mostrar métricas individuales con valor, título, subtítulo e indicador de estado visual.
 
-Descarga las imágenes necesarias desde DockerHub o verifica su presencia local.
+**ConnectionStatus**: Componente de estado de conexión con indicadores visuales y información de última actualización.
 
-Arranca los contenedores definidos en docker-compose.yml.
+**CustomTooltip**: Tooltip personalizado para gráficas con formateo específico de valores y unidades.
 
-Espera y valida que todos los contenedores estén ejecutándose correctamente.
+**PieChartCustomLabel**: Etiquetas personalizadas para gráficas circulares con formateo de porcentajes.
 
-Realiza pruebas de conectividad a los servicios expuestos (backend y frontend).
+## Endpoints de la API
 
-Protege y verifica la integridad de la imagen alpine-stress.
+### API de Recolección (Go) - Puerto 8080
 
-Muestra las URLs de acceso a los servicios desplegados.
-```bash
-./deploy_app.sh
-```
+#### `/cpu`
+- **Método**: GET
+- **Descripción**: Retorna las métricas de uso del procesador en formato JSON
+- **Respuesta**: Datos en tiempo real del porcentaje de utilización de CPU
 
-#### Detener o Eliminar Contenedores de la App
-Realiza el apagado y limpieza de un entorno Docker para el proyecto, ofreciendo un menú interactivo con diferentes niveles de limpieza, asegurando la protección de imágenes críticas.
+#### `/ram`
+- **Método**: GET
+- **Descripción**: Proporciona información detallada sobre el uso de memoria del sistema
+- **Respuesta**: Datos de memoria total, libre, en uso y porcentaje de utilización
 
-Funciones principales:
-Define colores para mensajes de salida (print_success, print_warning, print_error).
+#### `/procesos`
+- **Método**: GET
+- **Descripción**: Información sobre el estado de los procesos del sistema
+- **Respuesta**: Conteo de procesos en diferentes estados (corriendo, durmiendo, zombie, parados)
 
-Cambia al directorio raíz del proyecto.
+#### `/metrics`
+- **Método**: GET
+- **Descripción**: Endpoint principal que consolida todas las métricas del sistema
+- **Respuesta**: Estructura JSON unificada con todas las métricas disponibles y timestamp
 
-Verifica la existencia y funcionamiento de Docker.
+#### `/health`
+- **Método**: GET
+- **Descripción**: Endpoint de verificación de estado del servicio
+- **Respuesta**: Respuesta simple "OK" para validar disponibilidad
 
-Comprueba si existe docker-compose.yml.
+### API de Persistencia (Node.js) - Puerto 7000
 
-Protege la imagen containerstack/alpine-stress:latest mediante un backup temporal.
+#### `/` (Raíz)
+- **Método**: GET
+- **Descripción**: Información general de la API
+- **Respuesta**: Metadatos de la API incluyendo versión, tipo y configuración de base de datos
 
-Ofrece un menú con las siguientes opciones:
+#### `/monitoring-data`
+- **Método**: POST
+- **Descripción**: Recibe y almacena datos de monitoreo en tiempo real
+- **Cuerpo**: JSON con métricas del sistema
+- **Respuesta**: Confirmación de inserción con ID generado
 
-Apagado suave (detiene contenedores).
+#### `/monitoring-data`
+- **Método**: GET
+- **Descripción**: Obtiene datos de monitoreo con paginación
+- **Parámetros**: `skip` (offset), `limit` (máximo 1000)
+- **Respuesta**: Array de registros de monitoreo ordenados por ID descendente
 
-Apagado completo (detiene y elimina volúmenes).
+#### `/monitoring-data/:id`
+- **Método**: GET
+- **Descripción**: Obtiene un registro específico de monitoreo
+- **Parámetros**: `id` (identificador numérico)
+- **Respuesta**: Objeto con datos del registro solicitado
 
-Limpieza profunda (elimina volúmenes, imágenes y redes no usadas).
+#### `/metadata`
+- **Método**: POST
+- **Descripción**: Crea registros de metadata sobre sesiones de recolección
+- **Cuerpo**: JSON con información de la sesión
+- **Respuesta**: Confirmación de inserción
 
-Limpieza agresiva (elimina imágenes específicas del proyecto).
+#### `/metadata`
+- **Método**: GET
+- **Descripción**: Obtiene todos los registros de metadata
+- **Respuesta**: Array completo de metadata ordenado por ID
 
-Cancelar operación.
+#### `/stats`
+- **Método**: GET
+- **Descripción**: Proporciona estadísticas agregadas del sistema
+- **Respuesta**: Métricas calculadas incluyendo promedios, máximos y conteos
 
-Realiza la acción seleccionada según la opción elegida por el usuario.
+#### `/monitoring-data`
+- **Método**: DELETE
+- **Descripción**: Elimina todos los datos de monitoreo y metadata
+- **Respuesta**: Confirmación con conteo de registros eliminados
 
-Valida y restaura (si es necesario) la imagen protegida alpine-stress.
+#### `/test-connection`
+- **Método**: GET
+- **Descripción**: Verifica conectividad con la base de datos PostgreSQL
+- **Respuesta**: Estado de conexión, versión de base de datos y tablas disponibles
 
-Elimina el backup temporal si la protección de alpine-stress fue exitosa.
+### API de Persistencia (Python) - Puerto 8000
 
-Muestra mensajes claros sobre el estado final de la operación.
+#### `/` (Raíz)
+- **Método**: GET
+- **Descripción**: Información general de la API Python
+- **Respuesta**: Metadatos de la API incluyendo versión, tipo Python/Flask y configuración de base de datos
 
+#### `/monitoring-data`
+- **Método**: POST
+- **Descripción**: Recibe y almacena datos de monitoreo en tiempo real con validación robusta
+- **Cuerpo**: JSON con métricas del sistema
+- **Respuesta**: Confirmación de inserción con ID generado, timestamp y identificador de API Python
 
-```bash
-./shutdown_app.sh
-```
+#### `/monitoring-data`
+- **Método**: GET
+- **Descripción**: Obtiene datos de monitoreo con paginación usando RealDictCursor
+- **Parámetros**: `skip` (offset), `limit` (máximo 1000)
+- **Respuesta**: Array de registros de monitoreo convertidos a diccionarios ordenados por ID descendente
 
-#### Detener Servicios Manualmente
+#### `/monitoring-data/<int:data_id>`
+- **Método**: GET
+- **Descripción**: Obtiene un registro específico de monitoreo por ID
+- **Parámetros**: `data_id` (identificador numérico como parámetro de ruta)
+- **Respuesta**: Objeto con datos del registro solicitado o error 404 si no existe
 
-```bash
-docker-compose down
-```
+#### `/metadata`
+- **Método**: POST
+- **Descripción**: Crea registros de metadata sobre sesiones de recolección con parsing avanzado de fechas
+- **Cuerpo**: JSON con información de la sesión
+- **Respuesta**: Confirmación de inserción con ID generado y identificador de API Python
 
-#### Detener y Eliminar Volúmenes
+#### `/metadata`
+- **Método**: GET
+- **Descripción**: Obtiene todos los registros de metadata
+- **Respuesta**: Array completo de metadata convertido a diccionarios ordenado por ID
 
-```bash
-docker-compose down -v
-```
+#### `/stats`
+- **Método**: GET
+- **Descripción**: Proporciona estadísticas agregadas del sistema con métricas específicas de Python API
+- **Respuesta**: Métricas calculadas incluyendo promedios, máximos, conteos y registros específicos de la API Python
 
----
+#### `/monitoring-data`
+- **Método**: DELETE
+- **Descripción**: Elimina todos los datos de monitoreo y metadata con conteo previo
+- **Respuesta**: Confirmación con conteo exacto de registros eliminados de ambas tablas
 
-### 3. Simulación de Carga (Stress Testing)
+#### `/test-connection`
+- **Método**: GET
+- **Descripción**: Verifica conectividad con la base de datos PostgreSQL incluyendo información de esquema
+- **Respuesta**: Estado de conexión, versión de base de datos, esquema actual y listado de tablas en fase2
 
-#### Crear Contenedores para Estresar RAM y CPU (dura 1 min)
-Despliega 10 contenedores Docker basados en la imagen containerstack/alpine-stress, ejecutando diferentes tipos de estrés para probar los recursos del sistema.
+### API de Consulta (Node.js) - Puerto 9000
 
-Funciones principales:
-Define colores para mensajes de salida (errores y éxitos).
+#### `/` (Raíz)
+- **Método**: GET
+- **Descripción**: Información general de la API de consulta
+- **Respuesta**: Metadatos de la API incluyendo versión, tipo y configuración de base de datos
 
-Verifica que Docker esté instalado y disponible.
+#### `/latest`
+- **Método**: GET
+- **Descripción**: Obtiene la última lectura de métricas disponible en la base de datos
+- **Respuesta**: Registro más reciente de monitoreo con todas las métricas del sistema
 
-Comprueba que la imagen containerstack/alpine-stress esté presente localmente.
+#### `/test-connection`
+- **Método**: GET
+- **Descripción**: Verifica conectividad con la base de datos PostgreSQL
+- **Respuesta**: Estado de conexión y confirmación de acceso a datos
 
-Define un conjunto de opciones para estrés: CPU, I/O, RAM (memoria), y disco.
+### API de Frontend (React) - Puerto 3000
 
-Despliega 10 contenedores con nombres únicos que ejecutan aleatoriamente uno de los tipos de estrés definidos, cada uno con un tiempo de ejecución limitado a 60 segundos.
+#### Rutas de la Aplicación Web
 
-Muestra mensajes de éxito o error para la creación de cada contenedor.
+#### `/` (Dashboard Principal)
+- **Método**: Interfaz Web
+- **Descripción**: Dashboard principal que muestra todas las métricas del sistema en tiempo real
+- **Funcionalidad**: Visualización completa con tarjetas de métricas, gráficas temporales, distribución de recursos y estados de procesos
 
-Indica al final que el despliegue se completó satisfactoriamente.
-```bash
-./stress_containers.sh
-```
+#### Eventos WebSocket Manejados
 
-#### Detener/Eliminar Contenedores de Prueba
-Elimina todos los contenedores Docker cuyo nombre contiene el prefijo stress_, usados para pruebas de estrés.
+#### `connect`
+- **Descripción**: Evento de conexión exitosa con el servidor Socket.IO
+- **Funcionalidad**: Actualiza estado de conexión y reinicia indicadores de error
 
-Funciones principales:
-Define colores para mensajes de salida (errores y éxitos).
+#### `disconnect`
+- **Descripción**: Evento de desconexión del servidor
+- **Funcionalidad**: Actualiza estado de conexión y maneja reconexión automática
 
-Verifica que Docker esté instalado y disponible.
+#### `monitoring-data`
+- **Descripción**: Recibe datos de monitoreo en tiempo real
+- **Datos**: Objeto JSON con métricas actuales del sistema
+- **Funcionalidad**: Actualiza estado actual y timestamp de última actualización
 
-Busca contenedores en ejecución o detenidos que tengan nombres que comienzan con stress_.
+#### `historical-data`
+- **Descripción**: Recibe array de datos históricos para gráficas temporales
+- **Datos**: Array de objetos con histórico de métricas
+- **Funcionalidad**: Procesa datos históricos con límite configurable y formateo de timestamps
 
-Elimina forzosamente esos contenedores si existen.
+#### `connect_error`
+- **Descripción**: Maneja errores de conexión WebSocket
+- **Funcionalidad**: Almacena información de error para debugging y notificación al usuario
 
-Informa al usuario si no se encontraron contenedores para eliminar.
+#### `reconnect`
+- **Descripción**: Evento de reconexión exitosa
+- **Funcionalidad**: Logging de intentos de reconexión y restauración de estado
 
-Maneja errores y finaliza el script si falla la eliminación.
+## Configuración del Entorno
 
-Muestra mensajes de estado durante todo el proceso.
-```bash
-./remove_containers.sh
-```
+### Infraestructura de Recolección (Go)
+- **Plataforma**: Google Cloud Platform (GCP)
+- **Dirección IP**: 35.188.88.211
+- **Acceso**: Terminal SSH mediante Termius
+- **Puerto de Servicio**: 8080
 
----
+#### Archivos del Sistema
+La aplicación depende de archivos específicos del sistema:
+- `/proc/cpu_202201947`: Métricas de CPU
+- `/proc/ram_202201947`: Información de memoria
+- `/proc/procesos_202201947`: Estado de procesos
 
-### 4. Acceso a la Base de Datos (PostgreSQL)
+### Infraestructura de Persistencia (Node.js)
+- **Plataforma**: Google Cloud Platform (GCP)
+- **Puerto de Servicio**: 7000
+- **Base de Datos**: PostgreSQL en Cloud SQL
+- **IP Base de Datos**: 34.56.148.15
+- **Esquema**: fase2
 
-#### Conectarte al Contenedor PostgreSQL
+#### Configuración de Base de Datos
 
-```bash
- docker exec -it metrics-postgres psql -U metrics_202201947 -d metrics_db
-```
+Host: 34.56.148.15
+Database: monitoring-metrics
+User: postgres
+Password: 12345678
+Port: 5432
+Schema: fase2
 
-#### Ejecutar Consultas:
 
-* Listar Tablas:
+#### Variables de Entorno
 
-```sql
-\dt
-```
+DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT, PORT
 
-* Ver últimos datos de CPU:
 
-```sql
- SELECT * FROM cpu_metrics ORDER BY created_at DESC LIMIT 10;
-```
+### Infraestructura de Persistencia (Python)
+- **Plataforma**: Compatible con múltiples entornos
+- **Puerto de Servicio**: 8000
+- **Framework**: Flask con psycopg2 para PostgreSQL
+- **Base de Datos**: PostgreSQL en Cloud SQL (misma instancia que Node.js)
+- **IP Base de Datos**: 34.56.148.15
+- **Esquema**: fase2
 
-* Ver últimos datos de RAM:
+#### Configuración de Base de Datos Python
 
-```sql
- SELECT * FROM ram_metrics ORDER BY created_at DESC LIMIT 10;
-```
-* Ver ultimos datos de los procesos 
-```sql
- SELECT * FROM procesos_metrics ORDER BY created_at DESC LIMIT 10;
-```
+Host: 34.56.148.15
+Database: monitoring-metrics
+User: postgres
+Password: 12345678
+Port: 5432
+Schema: fase2 (establecido automáticamente)
 
-* Ver ultimos datos combinados
-```sql
- SELECT * FROM metrics_combined ORDER BY created_at DESC LIMIT 10;
-```
 
+#### Variables de Entorno Python
 
+DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT, PORT
 
-Fase 1
-locust -f phase1_generator.py --host=http://localhost:8080 -u 300 -r 1 -t 180s --headless
-Fase 2
-locust -f phase2_sender.py --host=http://192.168.49.2 -u 150 -r 1 --headless
 
-# Enviar datos generados al ingress
-locust -f phase2_sender.py --host=http://metrics-api.local \
-       -u 150 -r 1 --headless
+#### Dependencias Python
 
-# Detener manualmente con Ctrl+C después de observar el tráfico
+Flask: Framework web principal
+Flask-CORS: Manejo de CORS
+psycopg2: Conector PostgreSQL
+logging: Sistema de logs integrado
+
+
+### Infraestructura de Consulta (Node.js)
+- **Plataforma**: Compatible con múltiples entornos
+- **Puerto de Servicio**: 9000
+- **Framework**: Express con pg para PostgreSQL
+- **Base de Datos**: PostgreSQL en Cloud SQL (misma instancia compartida)
+- **IP Base de Datos**: 34.56.148.15
+- **Esquema**: fase2
+
+#### Configuración de Base de Datos Consulta
+
+Host: 34.56.148.15
+Database: monitoring-metrics
+User: postgres
+Password: 12345678
+Port: 5432
+Schema: fase2
+
+
+#### Variables de Entorno Consulta
+
+DB_HOST, DB_NAME, DB_USER, DB_PASSWORD, DB_PORT, PORT
+
+
+#### Dependencias Node.js Consulta
+
+Express: Framework web principal
+CORS: Manejo de CORS
+pg: Conector PostgreSQL
+
+
+### Infraestructura de Frontend (React)
+- **Plataforma**: Compatible con múltiples entornos
+- **Puerto de Servicio**: 3000 (desarrollo) / configurable para producción
+- **Framework**: React con create-react-app
+- **Conexión**: WebSocket mediante Socket.IO y HTTP para APIs REST
+
+#### Configuración de Frontend
+
+Servidor de desarrollo: localhost:3000
+Build de producción: Archivos estáticos desplegables
+Conexión WebSocket: Configurable via variables de entorno
+APIs de datos: Configurable via variables de entorno
+
+
+#### Variables de Entorno Frontend
+
+REACT_APP_SOCKET_URL: URL del servidor Socket.IO
+REACT_APP_API_URL: URL base de las APIs
+REACT_APP_REFRESH_INTERVAL: Intervalo de actualización en ms
+REACT_APP_MAX_HISTORICAL_POINTS: Límite de puntos históricos
+
+
+#### Dependencias Frontend
+
+React: Framework de interfaz principal
+Socket.IO-client: Cliente WebSocket para tiempo real
+Recharts: Librería de gráficas y visualización
+React Hooks: useState, useEffect para gestión de estado
+CSS-in-JS: Estilos integrados con soporte para temas
+
+
+#### Configuración de Despliegue
+
+Build: npm run build genera archivos estáticos
+Servidor: Cualquier servidor web (nginx, Apache, Express estático)
+Variables: Configurables en tiempo de build o runtime
+CORS: Configurado en las APIs de backend para permitir acceso
+
+
+### Proceso de Recolección y Almacenamiento
+
+1. **Recolección**: La API Go monitorea continuamente las métricas del sistema cada 5 segundos desde archivos `/proc` personalizados.
+
+2. **Exposición**: Los datos se exponen a través de endpoints REST, particularmente el endpoint `/metrics` que consolida todas las métricas.
+
+3. **Transmisión**: Un cliente HTTP realiza peticiones a la API Go para obtener las métricas actuales.
+
+4. **Recepción**: Las APIs de persistencia (Node.js o Python) reciben los datos JSON a través del endpoint `POST /monitoring-data`.
+
+5. **Procesamiento**: Los datos son validados, las fechas son parseadas y normalizadas usando diferentes estrategias según la API.
+
+6. **Persistencia**: Los datos se insertan en la base de datos PostgreSQL en el esquema `fase2.monitoring_data` con identificación de la API origen.
+
+7. **Confirmación**: Se retorna una confirmación con el ID del registro insertado y metadatos de la API utilizada.
+
+8. **Consulta**: La API de consulta Node.js lee la base de datos para proporcionar acceso a la última lectura de métricas almacenadas.
+
+9. **Distribución WebSocket**: La API de consulta distribuye datos en tiempo real mediante WebSocket a clientes conectados.
+
+10. **Visualización**: La API Frontend React recibe datos via WebSocket, los procesa y los presenta en una interfaz gráfica interactiva con dashboards, métricas en tiempo real y gráficas históricas.
+
+### Integración de Sistemas
+
+El sistema está diseñado para funcionar como una arquitectura distribuida donde:
+- La API Go se especializa en la recolección eficiente de métricas del sistema
+- Las APIs Node.js y Python se enfocan en la persistencia, consulta y gestión de datos históricos con enfoques tecnológicos diferentes
+- La API de consulta Node.js proporciona acceso directo a la última lectura de métricas almacenadas y distribuye datos via WebSocket
+- La API Frontend React consume datos del sistema mediante WebSocket y HTTP, proporcionando visualización interactiva y monitoreo en tiempo real
+- Todas las APIs de persistencia y consulta comparten la misma base de datos PostgreSQL pero se identifican mediante el campo `api` para diferenciación
+- La base de datos PostgreSQL proporciona almacenamiento confiable y capacidades de análisis unificadas
+- Las múltiples implementaciones permiten flexibilidad tecnológica y redundancia operacional
+- El frontend React ofrece una experiencia de usuario moderna con actualizaciones en tiempo real, gráficas interactivas y monitoreo visual del estado del sistema
+
+
+# Despliegue en la nube GCP (kubernetes manifiesto)
+### Componentes Principales
+
+**Configuración de Base de Datos:**
+- ConfigMap y Secret para centralizar las credenciales de conexión a PostgreSQL
+- Base de datos externa ubicada en la IP 34.56.148.15
+
+**Servicios Desplegados:**
+- **API Python:** Contenedor `pablo03r/api1-python-fase2` ejecutándose en puerto 8000
+- **API Node.js (api1):** Contenedor `pablo03r/api1-nodejs-fase2` ejecutándose en puerto 7000  
+- **API Node.js 2 (api2):** Contenedor `pablo03r/api2-nodejs-fase2` ejecutándose en puerto 9000
+
+### Características de Configuración
+
+**Alta Disponibilidad:**
+- Cada servicio cuenta con 2 réplicas para garantizar disponibilidad
+- Health checks configurados con liveness y readiness probes
+- Límites de recursos definidos (256Mi-512Mi RAM, 250m-500m CPU)
+
+**Exposición de Servicios:**
+- Services tipo ClusterIP para comunicación interna
+- LoadBalancers individuales para acceso externo directo
+- Configuración de Ingress con distribución de tráfico canary
+
+### Distribución de Tráfico
+
+El sistema implementa una estrategia de distribución donde:
+- La API Python recibe el 50% del tráfico a través del Ingress principal
+- La API Node.js (api1) recibe el 50% restante mediante configuración canary
+- Ambos servicios responden al endpoint `/monitoring-data`
+
+
+
+
